@@ -1,14 +1,10 @@
--- RoWatch Studio Plugin
--- Multi-project profiles, live session tracking, and website-matched styling.
-
 local HttpService = game:GetService("HttpService")
 local ScriptEditorService = game:GetService("ScriptEditorService")
 local TweenService = game:GetService("TweenService")
 local StudioService = game:GetService("StudioService")
 local Players = game:GetService("Players")
 
--- Change this to your deployed RoWatch URL.
-local ROWATCH_URL = "http://localhost:5000"
+local ROWATCH_URL = " https://essence-valley-glimpse.ngrok-free.dev/"
 
 local THEMES = {
     light = {
@@ -397,6 +393,74 @@ local function apiCall(profile, endpoint, method, body)
 end
 
 
+-- Script tracking is strictly session-scoped. No editor text is read or cached
+-- until a user explicitly starts a RoWatch session.
+local function beginDocumentTracking(document)
+    if not sessionId or not activeProfile or documents[document] then return end
+
+    local scriptObject = document:GetScript()
+    if not scriptObject then return end
+
+    local ok, text = pcall(function() return document:GetText() end)
+    if not ok then return end
+
+    documents[document] = {
+        name = scriptObject:GetFullName(),
+        startText = text,
+        lastText = text,
+    }
+
+    apiCall(activeProfile, "/api/events/script/open", "POST", {
+        session_id = sessionId,
+        script = scriptObject:GetFullName(),
+    })
+end
+
+local function snapshotOpenDocuments()
+    documents = {}
+    if not sessionId or not activeProfile then return end
+
+    local ok, openDocuments = pcall(function()
+        return ScriptEditorService:GetScriptDocuments()
+    end)
+    if not ok or not openDocuments then return end
+
+    for _, document in ipairs(openDocuments) do
+        beginDocumentTracking(document)
+    end
+end
+
+local function finishDocumentTracking(document)
+    local info = documents[document]
+    if not info then return end
+
+    local ok, text = pcall(function() return document:GetText() end)
+    if ok then info.lastText = text end
+
+    if sessionId and activeProfile then
+        apiCall(activeProfile, "/api/events/script/close", "POST", {
+            session_id = sessionId,
+            script = info.name,
+            chars_added = math.max(#info.lastText - #info.startText, 0),
+            chars_removed = math.max(#info.startText - #info.lastText, 0),
+        })
+    end
+
+    documents[document] = nil
+end
+
+local function finishAllDocumentTracking()
+    local tracked = {}
+    for document in pairs(documents) do
+        table.insert(tracked, document)
+    end
+    for _, document in ipairs(tracked) do
+        finishDocumentTracking(document)
+    end
+    documents = {}
+end
+
+
 local StarterGui = game:GetService("StarterGui")
 local Workspace = game:GetService("Workspace")
 
@@ -632,6 +696,7 @@ showProjects = function(message, isError)
                 sessionStart = os.time()
                 lastHeartbeat = 0
                 instanceQueue = {}
+                snapshotOpenDocuments()
                 showActive()
             else
                 showProjects("Could not start: " .. (err or "unknown error"), true)
@@ -688,11 +753,13 @@ showActive = function()
     finish.MouseButton1Click:Connect(function()
         finish.Text = "Saving session..."
         flushInstanceQueue()
+        finishAllDocumentTracking()
         apiCall(activeProfile, "/api/events/session/end", "POST", {session_id = sessionId})
         sessionId = nil
         sessionStart = nil
         activeProfile = nil
         instanceQueue = {}
+        documents = {}
         showProjects("Session saved")
     end)
 
@@ -711,41 +778,32 @@ end
 
 pcall(function()
     ScriptEditorService.TextDocumentDidOpen:Connect(function(document)
-        local scriptObject = document:GetScript()
-        if not scriptObject then return end
-        local ok, text = pcall(function() return document:GetText() end)
-        documents[document] = {
-            name = scriptObject:GetFullName(),
-            startText = ok and text or "",
-            lastText = ok and text or "",
-        }
-        if sessionId then
-            apiCall(activeProfile, "/api/events/script/open", "POST", {
-                session_id = sessionId,
-                script = scriptObject:GetFullName(),
-            })
-        end
+        -- Outside a session, do not read, cache, or send editor contents.
+        if not sessionId then return end
+        beginDocumentTracking(document)
     end)
 
     ScriptEditorService.TextDocumentDidChange:Connect(function(document)
+        if not sessionId then return end
+
         local info = documents[document]
-        if not info then return end
+        if not info then
+            -- Defensive fallback for a document that appeared after the start snapshot.
+            beginDocumentTracking(document)
+            info = documents[document]
+            if not info then return end
+        end
+
         local ok, text = pcall(function() return document:GetText() end)
         if ok then info.lastText = text end
     end)
 
     ScriptEditorService.TextDocumentDidClose:Connect(function(document)
-        local info = documents[document]
-        if not info then return end
-        if sessionId then
-            apiCall(activeProfile, "/api/events/script/close", "POST", {
-                session_id = sessionId,
-                script = info.name,
-                chars_added = math.max(#info.lastText - #info.startText, 0),
-                chars_removed = math.max(#info.startText - #info.lastText, 0),
-            })
+        if not sessionId then
+            documents[document] = nil
+            return
         end
-        documents[document] = nil
+        finishDocumentTracking(document)
     end)
 end)
 
@@ -761,6 +819,7 @@ end)
 plugin.Unloading:Connect(function()
     if sessionId and activeProfile then
         flushInstanceQueue()
+        finishAllDocumentTracking()
         apiCall(activeProfile, "/api/events/session/end", "POST", {session_id = sessionId})
     end
 end)

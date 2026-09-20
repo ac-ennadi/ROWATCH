@@ -31,7 +31,11 @@ def session_end():
     data       = request.get_json(silent=True) or {}
     session_id = data.get("session_id")
 
-    session = Session.query.filter_by(id=session_id, user_id=g.user.id).first()
+    session = Session.query.filter_by(
+        id=session_id,
+        project_id=g.project.id,
+        user_id=g.user.id,
+    ).first()
     if not session:
         return jsonify({"error": "Session not found"}), 404
     if session.ended_at:
@@ -72,7 +76,12 @@ def script_open():
     if not session_id or not script_name:
         return jsonify({"error": "session_id and script required"}), 400
 
-    session = Session.query.filter_by(id=session_id, user_id=g.user.id, ended_at=None).first()
+    session = Session.query.filter_by(
+        id=session_id,
+        project_id=g.project.id,
+        user_id=g.user.id,
+        ended_at=None,
+    ).first()
     if not session:
         return jsonify({"error": "Active session not found"}), 404
 
@@ -101,9 +110,14 @@ def script_close():
     if not session_id or not script_name:
         return jsonify({"error": "session_id and script required"}), 400
 
-    session = Session.query.filter_by(id=session_id, user_id=g.user.id).first()
+    session = Session.query.filter_by(
+        id=session_id,
+        project_id=g.project.id,
+        user_id=g.user.id,
+        ended_at=None,
+    ).first()
     if not session:
-        return jsonify({"error": "Session not found"}), 404
+        return jsonify({"error": "Active session not found"}), 404
 
     event = ScriptEvent(
         session_id=session_id,

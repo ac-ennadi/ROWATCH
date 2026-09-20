@@ -1,5 +1,6 @@
 from realtime import socketio
 from conftest import issue_api_key
+from models import db, Project, ProjectMember, ScriptEvent, Session, User
 
 
 def test_plugin_auth_rejects_bad_key(registered_client):
@@ -51,3 +52,47 @@ def test_authenticated_socket_room_receives_project_updates(app, registered_clie
     updates = socket_client.get_received()
     assert any(item["name"] == "project_update" and item["args"][0]["type"] == "session_started" for item in updates)
     socket_client.disconnect()
+
+
+def test_session_end_and_script_events_are_scoped_to_selected_project(app, registered_client, project):
+    api_key = issue_api_key(registered_client)
+    project_a_headers = {"X-Project-ID": project["id"], "X-API-Key": api_key}
+    session_id = registered_client.post("/api/events/session/start", headers=project_a_headers).get_json()["session_id"]
+
+    with app.app_context():
+        owner = User.query.filter_by(username="Owner").one()
+        project_b = Project(name="Second Project", owner_id=owner.id)
+        db.session.add(project_b)
+        db.session.flush()
+        db.session.add(ProjectMember(project_id=project_b.id, user_id=owner.id, role="owner"))
+        db.session.commit()
+        project_b_id = project_b.id
+
+    project_b_headers = {"X-Project-ID": project_b_id, "X-API-Key": api_key}
+    body = {"session_id": session_id, "script": "Workspace.Main"}
+    assert registered_client.post("/api/events/script/open", headers=project_b_headers, json=body).status_code == 404
+    assert registered_client.post("/api/events/script/close", headers=project_b_headers, json=body).status_code == 404
+    assert registered_client.post("/api/events/session/end", headers=project_b_headers, json={"session_id": session_id}).status_code == 404
+
+    with app.app_context():
+        assert db.session.get(Session, session_id).ended_at is None
+        assert ScriptEvent.query.filter_by(session_id=session_id).count() == 0
+
+    assert registered_client.post("/api/events/session/end", headers=project_a_headers, json={"session_id": session_id}).status_code == 200
+
+
+def test_script_close_rejects_an_ended_session(app, registered_client, project):
+    api_key = issue_api_key(registered_client)
+    headers = {"X-Project-ID": project["id"], "X-API-Key": api_key}
+    session_id = registered_client.post("/api/events/session/start", headers=headers).get_json()["session_id"]
+    assert registered_client.post("/api/events/session/end", headers=headers, json={"session_id": session_id}).status_code == 200
+
+    response = registered_client.post("/api/events/script/close", headers=headers, json={
+        "session_id": session_id,
+        "script": "Workspace.AfterEnd",
+        "chars_added": 500,
+    })
+    assert response.status_code == 404
+    assert response.get_json()["error"] == "Active session not found"
+    with app.app_context():
+        assert ScriptEvent.query.filter_by(session_id=session_id).count() == 0
