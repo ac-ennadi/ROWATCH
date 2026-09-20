@@ -8,8 +8,8 @@ services:
     ports:
       - "${ROWATCH_PORT:-5000}:5000"
     environment:
-      SECRET_KEY: "${SECRET_KEY:-change-this-before-production}"
-      JWT_SECRET: "${JWT_SECRET:-change-this-before-production}"
+      SECRET_KEY: "${SECRET_KEY:?Set SECRET_KEY to a random 32+ character value in .env}"
+      JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET to a different random 32+ character value in .env}"
       DATABASE_URL: "${DATABASE_URL:-sqlite:////app/instance/rowatch.db}"
       ROWATCH_DISABLE_PURGE: "${ROWATCH_DISABLE_PURGE:-0}"
       GUNICORN_WORKERS: "${GUNICORN_WORKERS:-1}"

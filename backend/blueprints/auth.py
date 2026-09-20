@@ -2,6 +2,8 @@ from datetime import datetime
 import hashlib
 import re
 import secrets
+import threading
+import time
 
 from flask import Blueprint, current_app, g, jsonify, make_response, request
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -11,6 +13,18 @@ from utils import create_token, login_required
 
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
+_login_attempts = {}
+_login_lock = threading.Lock()
+
+def _rate_limited(key, limit=10, window=300):
+    now = time.monotonic()
+    with _login_lock:
+        attempts = [stamp for stamp in _login_attempts.get(key, []) if now - stamp < window]
+        limited = len(attempts) >= limit
+        if not limited:
+            attempts.append(now)
+        _login_attempts[key] = attempts
+        return limited
 
 
 def valid_email(email):
@@ -24,6 +38,7 @@ def _session_response(payload, user, status=200):
         create_token(user.id),
         httponly=True,
         samesite="Lax",
+        secure=current_app.config["SESSION_COOKIE_SECURE"],
         max_age=int(current_app.config["JWT_EXPIRY"].total_seconds()),
     )
     return response, status
@@ -62,12 +77,14 @@ def register():
     tracking_consent = data.get("tracking_consent") is True
     if not username or not email or not password:
         return jsonify({"error": "All fields are required"}), 400
-    if len(username) < 3:
-        return jsonify({"error": "Username must be at least 3 characters"}), 400
+    if len(username) < 3 or len(username) > 64:
+        return jsonify({"error": "Username must be between 3 and 64 characters"}), 400
+    if len(email) > 254:
+        return jsonify({"error": "Email is too long"}), 400
     if not valid_email(email):
         return jsonify({"error": "Enter a valid email address"}), 400
-    if len(password) < 8:
-        return jsonify({"error": "Password must be at least 8 characters"}), 400
+    if len(password) < 8 or len(password) > 128:
+        return jsonify({"error": "Password must be between 8 and 128 characters"}), 400
     if not tracking_consent:
         return jsonify({"error": "You must consent to Studio activity tracking to create an account", "consent_required": True}), 400
     if User.query.filter_by(username=username).first():
@@ -95,6 +112,8 @@ def login():
     password = data.get("password") or ""
     if not login_id or not password:
         return jsonify({"error": "Username/email and password are required"}), 400
+    if _rate_limited(f"{request.remote_addr or 'unknown'}:{login_id.lower()[:254]}"):
+        return jsonify({"error": "Too many login attempts. Try again later."}), 429
     user = User.query.filter_by(username=login_id).first()
     if not user:
         user = User.query.filter_by(email=login_id.lower()).first()
@@ -108,7 +127,7 @@ def login():
 @auth_bp.route("/logout", methods=["POST"])
 def logout():
     response = make_response(jsonify({"ok": True}))
-    response.delete_cookie("token")
+    response.delete_cookie("token", secure=current_app.config["SESSION_COOKIE_SECURE"], samesite="Lax")
     return response
 
 
@@ -154,8 +173,10 @@ def update_me():
     data = request.get_json(silent=True) or {}
     username = (data.get("username") or g.user.username).strip()
     email = (data.get("email") or g.user.email).strip().lower()
-    if len(username) < 3:
-        return jsonify({"error": "Username must be at least 3 characters"}), 400
+    if len(username) < 3 or len(username) > 64:
+        return jsonify({"error": "Username must be between 3 and 64 characters"}), 400
+    if len(email) > 254:
+        return jsonify({"error": "Email is too long"}), 400
     if not valid_email(email):
         return jsonify({"error": "Enter a valid email address"}), 400
     if User.query.filter(User.username == username, User.id != g.user.id).first():
@@ -176,8 +197,8 @@ def change_password():
     password = data.get("password") or ""
     if not check_password_hash(g.user.password_hash, current_password):
         return jsonify({"error": "Current password is incorrect"}), 401
-    if len(password) < 8:
-        return jsonify({"error": "Password must be at least 8 characters"}), 400
+    if len(password) < 8 or len(password) > 128:
+        return jsonify({"error": "Password must be between 8 and 128 characters"}), 400
     g.user.password_hash = generate_password_hash(password)
     db.session.commit()
     return jsonify({"ok": True})

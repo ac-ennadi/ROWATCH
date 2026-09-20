@@ -103,8 +103,11 @@ def script_close():
     data          = request.get_json(silent=True) or {}
     session_id    = data.get("session_id")
     script_name   = (data.get("script") or "").strip()
-    chars_added   = int(data.get("chars_added") or 0)
-    chars_removed = int(data.get("chars_removed") or 0)
+    try:
+        chars_added = int(data.get("chars_added") or 0)
+        chars_removed = int(data.get("chars_removed") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Character counts must be whole numbers"}), 400
     opened_at     = data.get("opened_at")
 
     if not session_id or not script_name:
@@ -153,13 +156,18 @@ def instance_change():
 
     created = []
     for item in items[:100]:
+        if not isinstance(item, dict):
+            continue
         category = str(item.get("category") or "").lower()
         action = str(item.get("action") or "").lower()
         if category not in ("part", "ui") or action not in ("added", "removed"):
             continue
         class_name = str(item.get("class_name") or "Unknown")[:64]
         instance_name = str(item.get("instance_name") or class_name)[:256]
-        count = min(max(int(item.get("count") or 1), 1), 1000)
+        try:
+            count = min(max(int(item.get("count") or 1), 1), 1000)
+        except (TypeError, ValueError):
+            continue
         event = InstanceEvent(
             session_id=session.id,
             category=category,

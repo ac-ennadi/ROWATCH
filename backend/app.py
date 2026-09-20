@@ -3,8 +3,7 @@ import os
 import threading
 import time
 
-from flask import Flask, jsonify, send_from_directory
-from flask_cors import CORS
+from flask import Flask, jsonify, request, send_from_directory
 from sqlalchemy import inspect, text
 
 from config import Config
@@ -22,7 +21,11 @@ def create_app(test_config=None):
     if test_config:
         app.config.update(test_config)
 
-    CORS(app, supports_credentials=True)
+    if not app.config.get("TESTING"):
+        for name in ("SECRET_KEY", "JWT_SECRET"):
+            value = app.config.get(name)
+            if not value or len(value) < 32 or value.startswith("change-this"):
+                raise RuntimeError(f"{name} must be a unique random value of at least 32 characters")
     db.init_app(app)
     socketio.init_app(app)
 
@@ -46,6 +49,26 @@ def create_app(test_config=None):
         ensure_tracking_consent_columns()
         migrate_legacy_project_plans()
         bootstrap_admin_account()
+
+    @app.before_request
+    def validate_browser_origin():
+        if request.method in {"GET", "HEAD", "OPTIONS"} or request.headers.get("X-API-Key"):
+            return None
+        origin = request.headers.get("Origin")
+        trusted = set(app.config.get("TRUSTED_ORIGINS") or ())
+        if origin and origin.rstrip("/") != request.host_url.rstrip("/") and origin.rstrip("/") not in trusted:
+            return jsonify({"error": "Untrusted request origin"}), 403
+
+    @app.after_request
+    def security_headers(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        response.headers.setdefault("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+        if request.is_secure:
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return response
 
     @app.get("/health")
     def health():
@@ -148,4 +171,4 @@ if __name__ == "__main__":
     app = create_app()
     if os.environ.get("ROWATCH_DISABLE_PURGE") != "1":
         start_purge_thread(app)
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=os.environ.get("FLASK_DEBUG", "1") == "1")
+    app.run(host="127.0.0.1", port=int(os.environ.get("PORT", "5000")), debug=False)

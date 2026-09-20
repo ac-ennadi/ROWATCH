@@ -72,7 +72,10 @@ def checkout():
     """Dummy account-level gateway. Body: {plan, duration_months, method}."""
     data = request.get_json(silent=True) or {}
     plan = data.get("plan")
-    duration = int(data.get("duration_months") or 1)
+    try:
+        duration = int(data.get("duration_months") or 1)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Duration must be a whole number"}), 400
     method = data.get("method") or "dummy"
     if plan not in ("free", "pro", "studio"):
         return jsonify({"error": "Invalid plan"}), 400
@@ -117,7 +120,10 @@ def admin_activate():
         return jsonify({"error": "Admin only"}), 403
     data = request.get_json(silent=True) or {}
     plan = data.get("plan")
-    duration = int(data.get("duration_months") or 1)
+    try:
+        duration = int(data.get("duration_months") or 1)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Duration must be a whole number"}), 400
     target = User.query.get(data.get("user_id")) if data.get("user_id") else User.query.filter_by(username=data.get("username")).first()
     if plan not in ("free", "pro", "studio"):
         return jsonify({"error": "Invalid plan"}), 400

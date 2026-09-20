@@ -181,6 +181,11 @@ def export_activity(project_id):
             "upgrade_required": True,
         }), 403
 
+    def safe_cell(value):
+        text_value = str(value or "")
+        if text_value.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")):
+            return "'" + text_value
+        return text_value
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
@@ -191,13 +196,13 @@ def export_activity(project_id):
     for session in sessions:
         for event in sorted(session.script_events, key=lambda item: item.occurred_at):
             writer.writerow([
-                session.user.username, session.id, event.event_type, event.script_name, "",
+                safe_cell(session.user.username), session.id, event.event_type, safe_cell(event.script_name), "",
                 event.chars_added, event.chars_removed, "", event.occurred_at.isoformat(),
             ])
         for event in sorted(session.instance_events, key=lambda item: item.occurred_at):
             writer.writerow([
-                session.user.username, session.id, f"{event.category}_{event.action}",
-                event.instance_name, event.class_name, "", "", event.count,
+                safe_cell(session.user.username), session.id, f"{event.category}_{event.action}",
+                safe_cell(event.instance_name), safe_cell(event.class_name), "", "", event.count,
                 event.occurred_at.isoformat(),
             ])
     filename = f"rowatch-{g.project.name[:48].strip() or 'project'}-activity.csv"

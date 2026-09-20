@@ -20,6 +20,7 @@ def app(tmp_path):
         "SQLALCHEMY_DATABASE_URI": f"sqlite:///{database}",
         "SECRET_KEY": "test-secret",
         "JWT_SECRET": "test-jwt-secret",
+        "SESSION_COOKIE_SECURE": False,
     })
     yield application
     with application.app_context():
