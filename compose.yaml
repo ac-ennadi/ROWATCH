@@ -1,0 +1,27 @@
+services:
+  rowatch:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rowatch:latest
+    restart: unless-stopped
+    ports:
+      - "${ROWATCH_PORT:-5000}:5000"
+    environment:
+      SECRET_KEY: "${SECRET_KEY:-change-this-before-production}"
+      JWT_SECRET: "${JWT_SECRET:-change-this-before-production}"
+      DATABASE_URL: "${DATABASE_URL:-sqlite:////app/instance/rowatch.db}"
+      ROWATCH_DISABLE_PURGE: "${ROWATCH_DISABLE_PURGE:-0}"
+      GUNICORN_WORKERS: "${GUNICORN_WORKERS:-1}"
+      GUNICORN_THREADS: "${GUNICORN_THREADS:-4}"
+    volumes:
+      - rowatch_data:/app/instance
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  rowatch_data:

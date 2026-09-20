@@ -1,0 +1,709 @@
+(() => {
+  'use strict';
+
+  const API = '';
+  const state = {
+    user: null,
+    projects: [],
+    project: null,
+    panel: 'overview',
+    charts: {},
+    checkoutPlan: null,
+    socket: null,
+    liveRefreshTimer: null,
+  };
+
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+  const el = (id) => document.getElementById(id);
+
+  function esc(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  }
+
+  async function api(path, options = {}) {
+    try {
+      const response = await fetch(API + path, {
+        credentials: 'include',
+        headers: {'Content-Type': 'application/json', ...(options.headers || {})},
+        ...options,
+      });
+      const data = await response.json().catch(() => ({}));
+      return {ok: response.ok, status: response.status, data};
+    } catch (error) {
+      return {ok: false, status: 0, data: {error: 'Could not reach the RoWatch server.'}};
+    }
+  }
+
+  function toast(message) {
+    const node = el('toast');
+    node.textContent = message;
+    node.classList.add('show');
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => node.classList.remove('show'), 2200);
+  }
+
+  function fmtDuration(seconds = 0) {
+    seconds = Math.max(0, Number(seconds) || 0);
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h) return `${h}h ${m}m`;
+    return `${m}m`;
+  }
+
+  function compactNumber(value = 0) {
+    const n = Number(value) || 0;
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 100_000 ? 0 : 1)}K`;
+    return n.toLocaleString();
+  }
+
+  function fmtDate(iso, withTime = true) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '—';
+    return new Intl.DateTimeFormat(undefined, withTime ? {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    } : {year: 'numeric', month: 'short', day: 'numeric'}).format(d);
+  }
+
+  function roleName(role) {
+    return role === 'co_admin' ? 'Co-admin' : role === 'owner' ? 'Owner' : 'Member';
+  }
+
+  function isAdmin() {
+    return state.project && ['owner', 'co_admin'].includes(state.project.role);
+  }
+
+  function isOwner() {
+    return state.project?.role === 'owner';
+  }
+
+  function setView(name) {
+    $$('.view').forEach(v => v.classList.remove('active'));
+    el(`view-${name}`)?.classList.add('active');
+    el('publicNav').style.display = name === 'home' ? '' : 'none';
+    window.scrollTo({top: 0, behavior: 'auto'});
+  }
+
+  async function route(name) {
+    closeSidebar();
+    if (name === 'home') {
+      state.project = null;
+      setView('home');
+      history.replaceState(null, '', location.pathname);
+      return;
+    }
+    if (name === 'login' || name === 'register') {
+      setView(name);
+      return;
+    }
+    if (name === 'projects') {
+      if (!state.user) return route('login');
+      state.project = null;
+      setView('projects');
+      syncUserUI();
+      await loadProjects();
+      return;
+    }
+    if (name === 'account') {
+      if (!state.user) return route('login');
+      if (state.project) return openPanel('account');
+      return openStandaloneAccount();
+    }
+  }
+
+  function applyTheme(theme) {
+    const next = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem('rowatch-theme', next);
+    if (el('themeLabel')) el('themeLabel').textContent = next === 'dark' ? 'Dark' : 'Light';
+    if (state.project && state.panel && ['overview', 'analytics'].includes(state.panel)) {
+      setTimeout(() => openPanel(state.panel), 0);
+    }
+  }
+
+  function toggleTheme() {
+    applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+  }
+
+  function syncUserUI() {
+    const username = state.user?.username || 'Account';
+    const initial = username.slice(0, 1).toUpperCase() || 'R';
+    ['projectsUsername','dashboardUsername','sideUsername'].forEach(id => { if (el(id)) el(id).textContent = username; });
+    ['projectsAvatar','dashboardAvatar'].forEach(id => { if (el(id)) el(id).textContent = initial; });
+  }
+
+  async function checkAuth() {
+    const {ok, data} = await api('/auth/me');
+    if (ok) {
+      state.user = data;
+      syncUserUI();
+    }
+  }
+
+  function connectLiveUpdates() {
+    if (!state.user || !window.io || state.socket) return;
+    state.socket = window.io({transports: ['websocket', 'polling']});
+    state.socket.on('connect', () => {
+      if (state.project) state.socket.emit('join_project', {project_id: state.project.id});
+    });
+    state.socket.on('project_update', update => {
+      if (!state.project || update.project_id !== state.project.id) return;
+      if (!['overview', 'activity', 'analytics'].includes(state.panel)) return;
+      clearTimeout(state.liveRefreshTimer);
+      if (update.type === 'session_heartbeat' || update.type === 'instance_event') {
+        // Patch and animate KPI text only; never remount the dashboard panel.
+        state.liveRefreshTimer = setTimeout(refreshLiveKpis, 150);
+        return;
+      }
+      state.liveRefreshTimer = setTimeout(() => openPanel(state.panel), 250);
+    });
+  }
+
+  function joinLiveProject() {
+    connectLiveUpdates();
+    if (state.socket?.connected && state.project) {
+      state.socket.emit('join_project', {project_id: state.project.id});
+    }
+  }
+
+  async function refreshLiveKpis() {
+    if (state.panel !== 'overview' || !state.project) return;
+    const result = await api(isAdmin()
+      ? `/dashboard/${state.project.id}/overview`
+      : `/dashboard/${state.project.id}/me`);
+    if (!result.ok || !state.project || state.panel !== 'overview') return;
+
+    let stats;
+    let activeCount;
+    if (isAdmin()) {
+      const members = result.data.members || [];
+      stats = members.reduce((total, member) => {
+        Object.keys(total).forEach(key => { total[key] += Number(member.stats[key]) || 0; });
+        return total;
+      }, {total_seconds:0, parts_added:0, parts_removed:0, ui_added:0, ui_removed:0});
+      activeCount = members.filter(member => member.active).length;
+    } else {
+      stats = result.data.stats;
+      activeCount = (result.data.sessions || []).filter(session => session.active).length;
+    }
+
+    const updateCard = (label, value, sub) => {
+      const card = $$('.kpi', el('panelContent')).find(node => $('span', node)?.textContent === label);
+      if (!card) return;
+      const valueNode = $('strong', card);
+      const subNode = $('small', card);
+      const changed = valueNode.textContent !== String(value)
+        || (sub !== undefined && subNode.textContent !== String(sub));
+      valueNode.textContent = value;
+      if (sub !== undefined) subNode.textContent = sub;
+      if (changed) {
+        card.classList.remove('live-change');
+        void card.offsetWidth;
+        card.classList.add('live-change');
+      }
+    };
+    updateCard(isAdmin() ? 'Total development time' : 'My development time', fmtDuration(stats.total_seconds));
+    updateCard('Parts', compactNumber(stats.parts_added), `${compactNumber(stats.parts_removed)} removed`);
+    updateCard('UI components', compactNumber(stats.ui_added), `${compactNumber(stats.ui_removed)} removed`);
+    updateConnectionBadge(activeCount ? 'Active Studio session' : 'No active Studio session', activeCount > 0);
+  }
+
+  async function login(event) {
+    event.preventDefault();
+    const error = el('loginError');
+    error.textContent = '';
+    const {ok, data} = await api('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({username: el('loginId').value.trim(), password: el('loginPw').value}),
+    });
+    if (!ok) return error.textContent = data.error || 'Login failed.';
+    await checkAuth();
+    connectLiveUpdates();
+    await route('projects');
+  }
+
+  async function register(event) {
+    event.preventDefault();
+    const error = el('registerError');
+    error.textContent = '';
+    const {ok, data} = await api('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({username: el('regUser').value.trim(), email: el('regEmail').value.trim(), password: el('regPw').value}),
+    });
+    if (!ok) return error.textContent = data.error || 'Registration failed.';
+    await checkAuth();
+    connectLiveUpdates();
+    await route('projects');
+  }
+
+  async function logout() {
+    await api('/auth/logout', {method: 'POST'});
+    state.user = null;
+    state.project = null;
+    destroyCharts();
+    state.socket?.disconnect();
+    state.socket = null;
+    await route('home');
+  }
+
+  async function loadProjects() {
+    const target = el('projectsList');
+    target.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+    const {ok, data} = await api('/projects/');
+    if (!ok) {
+      if (data.error === 'Unauthorized') return route('login');
+      target.innerHTML = `<div class="empty-state"><h2>Could not load projects</h2><p>${esc(data.error || 'Try again.')}</p></div>`;
+      return;
+    }
+    state.projects = data;
+    if (!data.length) {
+      target.innerHTML = `<div class="empty-state"><h2>No projects yet</h2><p>Create your first project, then connect Roblox Studio from the dashboard.</p><button class="btn btn-primary" type="button" id="emptyCreateProject">Create project</button></div>`;
+      el('emptyCreateProject').addEventListener('click', openCreateProject);
+      return;
+    }
+    target.innerHTML = data.map(p => `
+      <article class="project-card" tabindex="0" data-project-id="${esc(p.id)}" aria-label="Open ${esc(p.name)}">
+        <div class="project-card-head"><h2>${esc(p.name)}</h2><span class="plan-tag">${esc(p.plan)}</span></div>
+        <p class="muted">Open the project dashboard, Studio integration, analytics, and team controls.</p>
+        <div class="project-card-meta"><span>${p.member_count} member${p.member_count === 1 ? '' : 's'}</span><span>${esc(roleName(p.role))}</span><span>Created ${esc(fmtDate(p.created_at, false))}</span></div>
+      </article>`).join('');
+    $$('.project-card', target).forEach(card => {
+      const open = () => openProject(card.dataset.projectId);
+      card.addEventListener('click', open);
+      card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    });
+  }
+
+  function openCreateProject() {
+    el('newProjectName').value = '';
+    el('createProjectError').textContent = '';
+    el('createProjectDialog').showModal();
+    setTimeout(() => el('newProjectName').focus(), 0);
+  }
+
+  async function createProject(event) {
+    event.preventDefault();
+    const error = el('createProjectError');
+    error.textContent = '';
+    const name = el('newProjectName').value.trim();
+    const {ok, data} = await api('/projects/', {method: 'POST', body: JSON.stringify({name})});
+    if (!ok) return error.textContent = data.error || 'Could not create project.';
+    el('createProjectDialog').close();
+    toast('Project created');
+    await loadProjects();
+    await openProject(data.id);
+  }
+
+  async function openProject(projectId) {
+    const {ok, data} = await api(`/projects/${projectId}`);
+    if (!ok) return toast(data.error || 'Could not open project.');
+    state.project = data;
+    state.panel = 'overview';
+    syncProjectChrome();
+    joinLiveProject();
+    setView('dashboard');
+    await openPanel('overview');
+  }
+
+  function syncProjectChrome() {
+    if (!state.project) return;
+    el('sidebarProjectName').textContent = state.project.name;
+    el('sidebarProjectPlan').textContent = `${state.project.plan[0].toUpperCase() + state.project.plan.slice(1)} plan · ${roleName(state.project.role)}`;
+    $$('.admin-only').forEach(node => node.style.display = isAdmin() ? '' : 'none');
+    syncUserUI();
+    applyTheme(localStorage.getItem('rowatch-theme') || 'light');
+  }
+
+  async function openPanel(name) {
+    if (!state.project && name !== 'account') return route('projects');
+    if (['analytics','members','settings'].includes(name) && !isAdmin()) name = 'overview';
+    state.panel = name;
+    $$('.side-nav button').forEach(button => button.classList.toggle('active', button.dataset.panel === name));
+    const titles = {overview:'Overview',activity:'Activity',analytics:'Analytics',members:'Members',integration:'Studio Integration',settings:'Project Settings',account:'Account'};
+    el('panelTitle').textContent = titles[name] || 'Dashboard';
+    el('topbarBreadcrumb').textContent = name === 'account' ? 'RoWatch / Account' : `${state.project.name} / ${titles[name]}`;
+    const content = el('panelContent');
+    content.innerHTML = '<div class="skeleton"></div>';
+    closeSidebar();
+
+    const loaders = {overview: loadOverview, activity: loadActivity, analytics: loadAnalytics, members: loadMembers, integration: loadIntegration, settings: loadSettings, account: loadAccountPanel};
+    await loaders[name]?.();
+  }
+
+  async function loadOverview() {
+    destroyCharts();
+    const content = el('panelContent');
+    if (!isAdmin()) return loadMemberOverview();
+
+    const [{ok, data}, activityResult] = await Promise.all([
+      api(`/dashboard/${state.project.id}/overview`),
+      api(`/dashboard/${state.project.id}/activity`),
+    ]);
+    if (!ok) return renderError(content, data.error);
+    const members = data.members || [];
+    const totalSeconds = members.reduce((sum, m) => sum + m.stats.total_seconds, 0);
+    const charsAdded = members.reduce((sum, m) => sum + m.stats.chars_added, 0);
+    const charsRemoved = members.reduce((sum, m) => sum + m.stats.chars_removed, 0);
+    const sessions = members.reduce((sum, m) => sum + m.stats.total_sessions, 0);
+    const recent = activityResult.ok ? activityResult.data.slice(0, 7) : [];
+    updateConnectionBadge(members.some(m => m.active) ? 'Active Studio session' : 'No active Studio session', members.some(m => m.active));
+
+    content.innerHTML = `
+      <div class="kpi-grid">
+        ${kpi('Total development time', fmtDuration(totalSeconds), 'Across all project members')}
+        ${kpi('Characters added', compactNumber(charsAdded), `${compactNumber(charsRemoved)} removed`)}
+        ${kpi('Sessions', sessions.toLocaleString(), `${members.filter(m => m.active).length} active now`)}
+        ${kpi('Team size', members.length.toLocaleString(), `${members.filter(m => m.role !== 'member').length} admins`)}
+        ${kpi('Parts', compactNumber(members.reduce((sum,m)=>sum+m.stats.parts_added,0)), `${compactNumber(members.reduce((sum,m)=>sum+m.stats.parts_removed,0))} removed`)}
+        ${kpi('UI components', compactNumber(members.reduce((sum,m)=>sum+m.stats.ui_added,0)), `${compactNumber(members.reduce((sum,m)=>sum+m.stats.ui_removed,0))} removed`)}
+      </div>
+      <div class="dashboard-grid">
+        <section class="panel-card"><div class="panel-card-head"><div><h2>Activity — last 14 days</h2><p>Completed and active sessions by day.</p></div></div><div class="chart-box"><canvas id="overviewDailyChart"></canvas></div></section>
+        <section class="panel-card"><div class="panel-card-head"><div><h2>Member sessions</h2><p>Session count by developer.</p></div></div><div class="chart-box"><canvas id="overviewMemberChart"></canvas></div></section>
+      </div>
+      <section class="panel-card"><div class="panel-card-head"><div><h2>Recent activity</h2><p>Latest Studio activity.</p></div><button class="mini-btn" type="button" data-go-panel="activity">View all</button></div>${recent.length ? activityTable(recent) : emptyInline('No activity yet', 'Start a Studio session to populate this feed.')}</section>`;
+
+    $$('[data-go-panel]', content).forEach(b => b.addEventListener('click', () => openPanel(b.dataset.goPanel)));
+    await renderOverviewCharts(members);
+  }
+
+  async function loadMemberOverview() {
+    const content = el('panelContent');
+    const {ok, data} = await api(`/dashboard/${state.project.id}/me`);
+    if (!ok) return renderError(content, data.error);
+    const s = data.stats;
+    updateConnectionBadge((data.sessions || []).some(session => session.active) ? 'Your Studio session is active' : 'No active Studio session', (data.sessions || []).some(session => session.active));
+    content.innerHTML = `
+      <div class="kpi-grid">
+        ${kpi('My development time', fmtDuration(s.total_seconds), 'All retained sessions')}
+        ${kpi('Characters added', compactNumber(s.chars_added), `${compactNumber(s.chars_removed)} removed`)}
+        ${kpi('Scripts opened', s.scripts_opened.toLocaleString(), 'Recorded Studio activity')}
+        ${kpi('Sessions', s.total_sessions.toLocaleString(), 'Tracked sessions')}
+        ${kpi('Parts', compactNumber(s.parts_added), `${compactNumber(s.parts_removed)} removed`)}
+        ${kpi('UI components', compactNumber(s.ui_added), `${compactNumber(s.ui_removed)} removed`)}
+      </div>
+      <section class="panel-card"><div class="panel-card-head"><div><h2>My session history</h2><p>Your activity in ${esc(state.project.name)}.</p></div></div>${sessionTable(data.sessions || [])}</section>`;
+  }
+
+  async function renderOverviewCharts(members) {
+    const {ok, data} = await api(`/dashboard/${state.project.id}/charts/daily`);
+    if (!window.Chart) return;
+    const vars = themeChartColors();
+    if (ok) {
+      const days = Object.keys(data).sort().slice(-14);
+      state.charts.daily = new Chart(el('overviewDailyChart'), {
+        type: 'line',
+        data: {labels: days.map(d => new Date(`${d}T00:00:00`).toLocaleDateString(undefined,{month:'short',day:'numeric'})), datasets:[{data:days.map(d => data[d].seconds / 3600), borderColor:vars.accent, backgroundColor:vars.accentSoft, fill:true, pointRadius:2, pointHoverRadius:4, tension:.25, borderWidth:2}]},
+        options: chartOptions('Hours'),
+      });
+    }
+    state.charts.members = new Chart(el('overviewMemberChart'), {
+      type: 'bar',
+      data: {labels: members.map(m => m.username), datasets:[{data:members.map(m => m.stats.total_sessions), backgroundColor:vars.accent, borderRadius:2}]},
+      options: chartOptions('Sessions'),
+    });
+  }
+
+  async function loadActivity() {
+    const content = el('panelContent');
+    let events = [];
+    if (isAdmin()) {
+      const result = await api(`/dashboard/${state.project.id}/activity`);
+      if (!result.ok) return renderError(content, result.data.error);
+      events = result.data;
+    } else {
+      const result = await api(`/dashboard/${state.project.id}/me`);
+      if (!result.ok) return renderError(content, result.data.error);
+      events = (result.data.sessions || []).flatMap(session => [
+        ...(session.events || []).map(event => ({...event, username: state.user.username, session_id: session.id})),
+        ...(session.instance_events || []).map(event => ({...event, username: state.user.username, session_id: session.id, script: event.instance_name, event_type: `${event.category}_${event.action}`})),
+      ]).sort((a,b) => String(b.occurred_at).localeCompare(String(a.occurred_at)));
+    }
+    content.innerHTML = `<div class="toolbar"><div><h2>${isAdmin() ? 'Project activity' : 'My activity'}</h2><p>Newest Studio events first. Up to 200 are shown.</p></div></div>${events.length ? activityTable(events.slice(0,200)) : emptyInline('No Studio activity', 'Connect the plugin and start a session.')}`;
+  }
+
+  async function loadAnalytics() {
+    destroyCharts();
+    const content = el('panelContent');
+    const [overview, daily] = await Promise.all([api(`/dashboard/${state.project.id}/overview`), api(`/dashboard/${state.project.id}/charts/daily`)]);
+    if (!overview.ok) return renderError(content, overview.data.error);
+    const members = overview.data.members || [];
+    const totalAdded = members.reduce((s,m) => s + m.stats.chars_added,0);
+    const totalRemoved = members.reduce((s,m) => s + m.stats.chars_removed,0);
+    const activeDays = daily.ok ? Object.keys(daily.data).length : 0;
+    content.innerHTML = `
+      <div class="kpi-grid">
+        ${kpi('Active days', activeDays, 'Within the last 30 days')}
+        ${kpi('Code change volume', compactNumber(totalAdded + totalRemoved), 'Added + removed characters')}
+        ${kpi('Average time / member', fmtDuration(members.length ? members.reduce((s,m)=>s+m.stats.total_seconds,0)/members.length : 0), 'Across current team')}
+        ${kpi('Average sessions / member', members.length ? (members.reduce((s,m)=>s+m.stats.total_sessions,0)/members.length).toFixed(1) : '0', 'Across current team')}
+      </div>
+      <div class="dashboard-grid">
+        <section class="panel-card"><div class="panel-card-head"><div><h2>Development time</h2><p>Hours tracked per day during the last 30 days.</p></div></div><div class="chart-box"><canvas id="analyticsTime"></canvas></div></section>
+        <section class="panel-card"><div class="panel-card-head"><div><h2>Code change volume</h2><p>Characters added per day.</p></div></div><div class="chart-box"><canvas id="analyticsCode"></canvas></div></section>
+      </div>
+      <section class="panel-card"><div class="panel-card-head"><div><h2>Member performance</h2><p>Raw tracked totals; interpret them in the context of each developer's work.</p></div></div>${memberStatsTable(members)}</section>`;
+    if (!window.Chart || !daily.ok) return;
+    const days = Object.keys(daily.data).sort();
+    const labels = days.map(d => new Date(`${d}T00:00:00`).toLocaleDateString(undefined,{month:'short',day:'numeric'}));
+    const vars = themeChartColors();
+    state.charts.analyticsTime = new Chart(el('analyticsTime'), {type:'line', data:{labels,datasets:[{data:days.map(d=>daily.data[d].seconds/3600),borderColor:vars.accent,backgroundColor:vars.accentSoft,fill:true,tension:.25,borderWidth:2,pointRadius:1}]},options:chartOptions('Hours')});
+    state.charts.analyticsCode = new Chart(el('analyticsCode'), {type:'bar', data:{labels,datasets:[{data:days.map(d=>daily.data[d].chars_added),backgroundColor:vars.accent,borderRadius:2}]},options:chartOptions('Characters')});
+  }
+
+  async function loadMembers() {
+    const content = el('panelContent');
+    const {ok, data} = await api(`/projects/${state.project.id}/members`);
+    if (!ok) return renderError(content, data.error);
+    content.innerHTML = `
+      <div class="toolbar"><div><h2>Project members</h2><p>${data.length} member${data.length === 1 ? '' : 's'} currently have project access.</p></div><button id="inviteMemberButton" class="btn btn-primary" type="button">+ Invite member</button></div>
+      <div class="data-table-wrap"><table class="data-table"><thead><tr><th>User</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead><tbody>${data.map(m => `<tr><td><strong>${esc(m.username)}</strong></td><td><span class="role-box">${esc(roleName(m.role))}</span></td><td>${esc(fmtDate(m.joined_at,false))}</td><td>${memberActions(m)}</td></tr>`).join('')}</tbody></table></div>`;
+    el('inviteMemberButton').addEventListener('click', () => { el('inviteUsername').value=''; el('inviteError').textContent=''; el('inviteDialog').showModal(); });
+    $$('[data-member-role]', content).forEach(b => b.addEventListener('click', () => changeMemberRole(b.dataset.userId, b.dataset.memberRole)));
+    $$('[data-member-remove]', content).forEach(b => b.addEventListener('click', () => removeMember(b.dataset.userId, b.dataset.username)));
+  }
+
+  function memberActions(member) {
+    if (!isOwner() || member.role === 'owner') return '<span class="muted">—</span>';
+    const next = member.role === 'co_admin' ? 'member' : 'co_admin';
+    return `<div class="member-actions"><button class="mini-btn" type="button" data-member-role="${next}" data-user-id="${esc(member.user_id)}">Make ${next === 'co_admin' ? 'co-admin' : 'member'}</button><button class="mini-btn danger" type="button" data-member-remove data-user-id="${esc(member.user_id)}" data-username="${esc(member.username)}">Remove</button></div>`;
+  }
+
+  async function inviteMember(event) {
+    event.preventDefault();
+    const error = el('inviteError');
+    error.textContent = '';
+    const {ok, data} = await api(`/projects/${state.project.id}/members/invite`, {method:'POST', body:JSON.stringify({username:el('inviteUsername').value.trim()})});
+    if (!ok) return error.textContent = data.error || 'Could not invite member.';
+    el('inviteDialog').close(); toast(`${data.username} added`); await loadMembers();
+  }
+
+  async function changeMemberRole(userId, role) {
+    const {ok, data} = await api(`/projects/${state.project.id}/members/${userId}/role`, {method:'PATCH', body:JSON.stringify({role})});
+    if (!ok) return toast(data.error || 'Could not change role.');
+    toast(`Role changed to ${roleName(role)}`); await loadMembers();
+  }
+
+  async function removeMember(userId, username) {
+    if (!confirm(`Remove ${username} from this project?`)) return;
+    const {ok, data} = await api(`/projects/${state.project.id}/members/${userId}`, {method:'DELETE'});
+    if (!ok) return toast(data.error || 'Could not remove member.');
+    toast(`${username} removed`); await loadMembers();
+  }
+
+  async function loadIntegration() {
+    const content = el('panelContent');
+    const key = state.project.project_key;
+    content.innerHTML = `
+      <div class="settings-stack">
+        <section class="settings-row"><h2>Roblox Studio connection</h2><p>Use the RoWatch plugin to connect Studio activity to this project.</p><ol class="setup-list"><li><strong>Install the plugin.</strong> Use <code class="mono">plugin/RoWatch.lua</code> from this package.</li><li><strong>Allow HTTP Requests</strong> in Roblox Studio game settings.</li><li><strong>Set the server URL</strong> in the plugin to this RoWatch deployment.</li><li><strong>Connect with your username and project key.</strong></li><li><strong>Start a session</strong> before working and end it when you're done.</li></ol></section>
+        <section class="settings-row"><h2>Project key</h2><p>${key ? 'Admins can copy this key for the Studio plugin.' : 'Your role does not expose the project key. Ask an owner or co-admin for it.'}</p>${key ? `<div class="key-line"><input id="integrationKey" readonly value="${esc(key)}"/><button id="copyIntegrationKey" class="btn btn-secondary" type="button">Copy key</button></div>` : ''}</section>
+        <section class="settings-row"><h2>Plugin API</h2><p>The plugin authenticates each request with <code class="mono">X-Project-Key</code> and <code class="mono">X-Username</code>.</p><div class="integration-code">GET /api/events/ping\nPOST /api/events/session/start\nPOST /api/events/session/end\nPOST /api/events/session/heartbeat\nPOST /api/events/script/open\nPOST /api/events/script/close\nPOST /api/events/instance/change</div></section>
+      </div>`;
+    el('copyIntegrationKey')?.addEventListener('click', () => copyText(key, 'Project key copied'));
+  }
+
+  async function loadSettings() {
+    const content = el('panelContent');
+    const p = state.project;
+    content.innerHTML = `
+      <div class="settings-stack">
+        <section class="settings-row"><h2>Project details</h2><p>${isOwner() ? 'Rename the project. Changes are visible to every member.' : 'Only the project owner can rename this project.'}</p><div class="key-line"><input id="projectNameInput" value="${esc(p.name)}" ${isOwner() ? '' : 'readonly'}/>${isOwner() ? '<button id="saveProjectName" class="btn btn-primary" type="button">Save</button>' : ''}</div></section>
+        <section class="settings-row"><h2>Current plan</h2><p>${p.plan_expires_at ? `Expires ${esc(fmtDate(p.plan_expires_at,false))}.` : 'No paid-plan expiry is currently set.'}</p><div class="key-line"><input readonly value="${esc(p.plan.toUpperCase())}"/><button id="upgradeProject" class="btn btn-secondary" type="button">View upgrades</button></div></section>
+        <section class="settings-row"><h2>Project key</h2><p>${isOwner() ? 'Regenerating the key disconnects existing Studio plugin configurations until they use the new key.' : 'Only the owner can regenerate the key.'}</p><div class="key-line"><input readonly id="settingsProjectKey" value="${esc(p.project_key || 'Hidden')}"/>${isOwner() ? '<button id="regenProjectKey" class="btn btn-secondary" type="button">Regenerate</button>' : ''}</div></section>
+        ${isOwner() ? '<section class="settings-row danger-zone"><h2>Delete project</h2><p>Permanently deletes this project, its memberships, sessions, and script events.</p><button id="deleteProject" class="btn btn-danger" type="button">Delete project</button></section>' : ''}
+      </div>`;
+    el('saveProjectName')?.addEventListener('click', saveProjectName);
+    el('regenProjectKey')?.addEventListener('click', regenerateProjectKey);
+    el('deleteProject')?.addEventListener('click', deleteProject);
+    el('upgradeProject')?.addEventListener('click', () => openCheckout(p.plan === 'pro' ? 'studio' : 'pro'));
+  }
+
+  async function saveProjectName() {
+    const name = el('projectNameInput').value.trim();
+    const {ok, data} = await api(`/projects/${state.project.id}`, {method:'PATCH', body:JSON.stringify({name})});
+    if (!ok) return toast(data.error || 'Could not rename project.');
+    state.project.name = data.name;
+    syncProjectChrome();
+    el('topbarBreadcrumb').textContent = `${state.project.name} / Project Settings`;
+    toast('Project renamed');
+  }
+
+  async function regenerateProjectKey() {
+    if (!confirm('Regenerate the project key? Existing plugin connections will stop working.')) return;
+    const {ok, data} = await api(`/projects/${state.project.id}/key`, {method:'POST'});
+    if (!ok) return toast(data.error || 'Could not regenerate key.');
+    state.project.project_key = data.project_key;
+    el('settingsProjectKey').value = data.project_key;
+    toast('Project key regenerated');
+  }
+
+  async function deleteProject() {
+    const typed = prompt(`Type ${state.project.name} to permanently delete this project.`);
+    if (typed !== state.project.name) return;
+    const {ok, data} = await api(`/projects/${state.project.id}`, {method:'DELETE'});
+    if (!ok) return toast(data.error || 'Could not delete project.');
+    toast('Project deleted');
+    await route('projects');
+  }
+
+  async function loadAccountPanel() {
+    const content = el('panelContent');
+    const result = await api('/auth/me');
+    if (!result.ok) return renderError(content, result.data.error);
+    state.user = result.data; syncUserUI();
+    content.innerHTML = `<div class="account-panel"><section class="panel-card"><div class="panel-card-head"><div><h2>Account details</h2><p>Your RoWatch username is also used by the Roblox Studio plugin.</p></div></div><div class="account-grid"><label>Username<input id="accountUsername" value="${esc(state.user.username)}"/></label><label>Email<input id="accountEmail" type="email" value="${esc(state.user.email)}"/></label></div><button id="saveAccount" class="btn btn-primary" type="button">Save account</button></section></div>`;
+    el('saveAccount').addEventListener('click', saveAccountFromPanel);
+  }
+
+  async function saveAccountFromPanel() {
+    const username = el('accountUsername').value.trim();
+    const email = el('accountEmail').value.trim();
+    const {ok,data} = await api('/auth/me',{method:'PATCH',body:JSON.stringify({username,email})});
+    if (!ok) return toast(data.error || 'Could not update account.');
+    state.user = {...state.user,...data}; syncUserUI(); toast('Account updated');
+  }
+
+  async function openStandaloneAccount() {
+    let dialog = el('standaloneAccountDialog');
+    if (!dialog) {
+      dialog = document.createElement('dialog');
+      dialog.id = 'standaloneAccountDialog';
+      dialog.className = 'dialog';
+      document.body.appendChild(dialog);
+    }
+    const result = await api('/auth/me');
+    if (!result.ok) return toast(result.data.error || 'Could not load account.');
+    state.user = result.data; syncUserUI();
+    dialog.innerHTML = `<form id="standaloneAccountForm"><div class="dialog-head"><div><h2>Account</h2><p>Your username is also used by the Roblox Studio plugin.</p></div><button type="button" class="dialog-x" data-standalone-close>×</button></div><label>Username<input id="standaloneUsername" value="${esc(state.user.username)}"/></label><label>Email<input id="standaloneEmail" type="email" value="${esc(state.user.email)}"/></label><p id="standaloneAccountError" class="form-error"></p><div class="dialog-actions"><button type="button" class="btn btn-secondary" id="standaloneLogout">Log out</button><button type="submit" class="btn btn-primary">Save</button></div></form>`;
+    $('[data-standalone-close]',dialog).addEventListener('click',()=>dialog.close());
+    el('standaloneLogout').addEventListener('click',()=>{dialog.close();logout();});
+    el('standaloneAccountForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const {ok,data} = await api('/auth/me',{method:'PATCH',body:JSON.stringify({username:el('standaloneUsername').value.trim(),email:el('standaloneEmail').value.trim()})});
+      if(!ok) return el('standaloneAccountError').textContent=data.error||'Could not save.';
+      state.user={...state.user,...data};syncUserUI();dialog.close();toast('Account updated');
+    });
+    dialog.showModal();
+  }
+
+  async function openCheckout(plan) {
+    state.checkoutPlan = plan;
+    if (!state.user) return route('register');
+    const projects = await api('/projects/');
+    if (!projects.ok) return toast(projects.data.error || 'Could not load projects.');
+    const owned = projects.data.filter(p => p.role === 'owner');
+    if (!owned.length) return toast('Create an owned project before upgrading.');
+    el('checkoutTitle').textContent = `Upgrade to ${plan[0].toUpperCase()+plan.slice(1)}`;
+    el('checkoutProject').innerHTML = owned.map(p => `<option value="${esc(p.id)}" ${state.project?.id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+    el('checkoutError').textContent = '';
+    el('checkoutDialog').showModal();
+  }
+
+  async function checkout(event) {
+    event.preventDefault();
+    const error = el('checkoutError');
+    error.textContent = '';
+    const {ok,data} = await api('/payments/checkout',{method:'POST',body:JSON.stringify({project_id:el('checkoutProject').value,plan:state.checkoutPlan,duration_months:Number(el('checkoutDuration').value),method:'dummy'})});
+    if(!ok) return error.textContent=data.error||'Checkout failed.';
+    el('checkoutDialog').close(); toast(`${state.checkoutPlan} plan activated`);
+    if(state.project?.id===el('checkoutProject').value){
+      const refreshed=await api(`/projects/${state.project.id}`);if(refreshed.ok){state.project=refreshed.data;syncProjectChrome();if(state.panel==='settings')loadSettings();}
+    }
+  }
+
+  function kpi(label, value, sub) {
+    return `<div class="kpi"><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(sub)}</small></div>`;
+  }
+
+  function activityTable(events) {
+    return `<div class="data-table-wrap"><table class="data-table"><thead><tr><th>Member</th><th>Target</th><th>Event</th><th>Change</th><th>Time</th></tr></thead><tbody>${events.map(e=>`<tr><td><strong>${esc(e.username || state.user?.username || 'User')}</strong></td><td class="mono">${esc(e.script || e.script_name || e.instance_name || '—')}</td><td><span class="event-box">${esc(String(e.event_type || '').replace('_',' '))}</span></td><td>${e.count ? esc(`×${e.count} ${e.class_name || ''}`) : `<span class="positive">+${Number(e.chars_added)||0}</span> / <span class="negative">-${Number(e.chars_removed)||0}</span>`}</td><td class="muted">${esc(fmtDate(e.occurred_at))}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  function sessionTable(sessions) {
+    if (!sessions.length) return emptyInline('No sessions yet', 'Connect Studio and start your first session.');
+    return `<div class="data-table-wrap"><table class="data-table"><thead><tr><th>Started</th><th>Duration</th><th>Scripts</th><th>Status</th></tr></thead><tbody>${sessions.map(s=>`<tr><td>${esc(fmtDate(s.started_at))}</td><td>${esc(fmtDuration(s.duration_sec))}</td><td>${(s.events||[]).filter(e=>e.event_type==='open').length}</td><td class="${s.active?'status-live':''}">${s.active?'● Active':'Ended'}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  function memberStatsTable(members) {
+    return `<div class="data-table-wrap"><table class="data-table"><thead><tr><th>Member</th><th>Role</th><th>Time</th><th>Sessions</th><th>Code +/−</th><th>Parts +/−</th><th>UI +/−</th><th>Status</th></tr></thead><tbody>${members.map(m=>`<tr><td><strong>${esc(m.username)}</strong></td><td><span class="role-box">${esc(roleName(m.role))}</span></td><td>${esc(fmtDuration(m.stats.total_seconds))}</td><td>${m.stats.total_sessions}</td><td><span class="positive">+${compactNumber(m.stats.chars_added)}</span> / <span class="negative">-${compactNumber(m.stats.chars_removed)}</span></td><td><span class="positive">+${compactNumber(m.stats.parts_added)}</span> / <span class="negative">-${compactNumber(m.stats.parts_removed)}</span></td><td><span class="positive">+${compactNumber(m.stats.ui_added)}</span> / <span class="negative">-${compactNumber(m.stats.ui_removed)}</span></td><td class="${m.active?'status-live':'muted'}">${m.active?'● Active':'Idle'}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  function emptyInline(title, message) {
+    return `<div class="empty-state"><h2>${esc(title)}</h2><p>${esc(message)}</p></div>`;
+  }
+
+  function renderError(target, message) {
+    target.innerHTML = emptyInline('Could not load this page', message || 'Try again.');
+  }
+
+  function chartOptions(yLabel) {
+    const vars = themeChartColors();
+    return {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{displayColors:false}},scales:{x:{grid:{display:false},ticks:{color:vars.muted,font:{size:10},maxRotation:0,autoSkip:true,maxTicksLimit:7},border:{color:vars.border}},y:{beginAtZero:true,grid:{color:vars.border},ticks:{color:vars.muted,font:{size:10}},border:{display:false},title:{display:false,text:yLabel}}}};
+  }
+
+  function themeChartColors() {
+    const styles = getComputedStyle(document.documentElement);
+    return {accent:styles.getPropertyValue('--accent').trim(), accentSoft:styles.getPropertyValue('--accent-soft').trim(), muted:styles.getPropertyValue('--muted').trim(), border:styles.getPropertyValue('--border').trim()};
+  }
+
+  function destroyCharts() {
+    Object.values(state.charts).forEach(chart => { try { chart.destroy(); } catch (_) {} });
+    state.charts = {};
+  }
+
+  async function copyText(text, successMessage='Copied') {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (_) {
+      const area = document.createElement('textarea');
+      area.value = text; area.style.position='fixed'; area.style.opacity='0'; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove();
+    }
+    toast(successMessage);
+  }
+
+  function updateConnectionBadge(text, good = false) {
+    const badge = el('connectionBadge');
+    if (!badge) return;
+    badge.textContent = text;
+    badge.classList.toggle('good', good);
+  }
+
+  function openSidebar() { el('sidebar').classList.add('open'); el('sidebarBackdrop').classList.add('show'); }
+  function closeSidebar() { el('sidebar').classList.remove('open'); el('sidebarBackdrop').classList.remove('show'); }
+
+  function wireEvents() {
+    $$('[data-route]').forEach(node => node.addEventListener('click', e => { e.preventDefault(); route(node.dataset.route); }));
+    $$('[data-panel]').forEach(node => node.addEventListener('click', () => openPanel(node.dataset.panel)));
+    $$('[data-plan]').forEach(node => node.addEventListener('click', () => openCheckout(node.dataset.plan)));
+    $$('[data-dialog-close]').forEach(node => node.addEventListener('click', () => node.closest('dialog').close()));
+
+    el('loginForm').addEventListener('submit', login);
+    el('registerForm').addEventListener('submit', register);
+    el('createProjectForm').addEventListener('submit', createProject);
+    el('inviteForm').addEventListener('submit', inviteMember);
+    el('checkoutForm').addEventListener('submit', checkout);
+    el('createProjectBtn').addEventListener('click', openCreateProject);
+    el('logoutButton').addEventListener('click', logout);
+    el('themeToggle').addEventListener('click', toggleTheme);
+    el('publicTheme').addEventListener('click', toggleTheme);
+    el('projectsTheme').addEventListener('click', toggleTheme);
+    el('sidebarMobileButton').addEventListener('click', openSidebar);
+    el('sidebarClose').addEventListener('click', closeSidebar);
+    el('sidebarBackdrop').addEventListener('click', closeSidebar);
+  }
+
+  async function init() {
+    applyTheme(localStorage.getItem('rowatch-theme') || 'light');
+    wireEvents();
+    await checkAuth();
+    syncUserUI();
+    connectLiveUpdates();
+    await route(state.user ? 'projects' : 'home');
+  }
+
+  init();
+})();

@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="RoWatch tracks Roblox Studio development time, script activity, and team progress." />
+  <title>RoWatch — Roblox Studio development tracking</title>
+  <link rel="stylesheet" href="/app.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script defer src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <header id="publicNav" class="public-nav">
+    <a class="brand" href="#" data-route="home" aria-label="RoWatch home">
+      <span class="brand-mark">R</span><span>RoWatch</span>
+    </a>
+    <nav class="public-links" aria-label="Primary navigation">
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#docs">Docs</a>
+    </nav>
+    <div class="nav-actions">
+      <button class="btn btn-ghost" id="publicTheme" type="button">Theme</button>
+      <button class="btn btn-ghost" type="button" data-route="login">Log in</button>
+      <button class="btn btn-primary" type="button" data-route="register">Get started free</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="view-home" class="view active">
+      <section class="hero container">
+        <div class="hero-copy">
+          <p class="eyebrow">ROBLOX STUDIO TEAM TRACKING</p>
+          <h1>Track Roblox development.<br /><span class="accent-text">See real progress.</span></h1>
+          <p class="hero-lede">RoWatch records development time, script changes, and team activity directly from Roblox Studio. Built for developers who need useful data, not surveillance.</p>
+          <div class="hero-actions">
+            <button class="btn btn-primary btn-lg" type="button" data-route="register">Start for free</button>
+            <a class="btn btn-secondary btn-lg" href="#pricing">View pricing</a>
+          </div>
+          <div class="hero-points" aria-label="Product highlights">
+            <div><strong>Team friendly</strong><span>Roles and permissions</span></div>
+            <div><strong>Useful analytics</strong><span>Time, edits, sessions</span></div>
+            <div><strong>Studio native</strong><span>Plugin-based tracking</span></div>
+          </div>
+        </div>
+
+        <div class="product-preview" aria-label="RoWatch dashboard preview">
+          <aside class="preview-sidebar">
+            <div class="preview-brand"><span class="brand-mark small">R</span>RoWatch</div>
+            <div class="preview-project"><span>Project</span><strong>Vehicle Legends</strong></div>
+            <div class="preview-nav">
+              <div class="selected">Overview</div><div>Activity</div><div>Analytics</div><div>Members</div><div>Studio Integration</div><div>Project Settings</div>
+            </div>
+            <div class="preview-nav lower"><div>← My Projects</div><div>Light / Dark</div><div>Account</div></div>
+          </aside>
+          <div class="preview-main">
+            <div class="preview-top"><strong>Overview</strong><span>May 12 – May 18</span></div>
+            <div class="preview-stats">
+              <div><span>Total time</span><strong>142h 36m</strong><small>+12.5%</small></div>
+              <div><span>Characters added</span><strong>1.2M</strong><small>+8.4%</small></div>
+              <div><span>Characters removed</span><strong>320K</strong><small class="down">-3.1%</small></div>
+              <div><span>Sessions</span><strong>48</strong><small>+6.7%</small></div>
+            </div>
+            <div class="preview-grid">
+              <div class="preview-chart-card"><span>Activity this week</span><div class="mini-chart"><i style="height:28%"></i><i style="height:44%"></i><i style="height:36%"></i><i style="height:67%"></i><i style="height:51%"></i><i style="height:40%"></i><i style="height:57%"></i><i style="height:78%"></i><i style="height:82%"></i><i style="height:96%"></i></div></div>
+              <div class="preview-members"><span>Top members</span><ol><li><b>Yora</b><em>42h 15m</em></li><li><b>Lxst</b><em>28h 10m</em></li><li><b>Kamii</b><em>21h 34m</em></li><li><b>NotCube</b><em>18h 23m</em></li></ol></div>
+            </div>
+            <div class="preview-activity"><span>Recent activity</span><div><b>Yora</b><code>ServerScriptService.Main</code><em>Script closed</em><strong>+153 / -24</strong></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" class="section container">
+        <div class="section-heading centered"><h2>Everything you need to ship better</h2><p>Practical tracking for Roblox developers and teams.</p></div>
+        <div class="feature-grid">
+          <article><span class="feature-icon">01</span><div><h3>Time tracking</h3><p>Record real development time with Studio sessions instead of manual timers.</p></div></article>
+          <article><span class="feature-icon">02</span><div><h3>Code change tracking</h3><p>See characters added and removed, plus script open and close activity.</p></div></article>
+          <article><span class="feature-icon">03</span><div><h3>Readable analytics</h3><p>Compare team activity by day, member, session, and total development time.</p></div></article>
+          <article><span class="feature-icon">04</span><div><h3>Team management</h3><p>Invite members, assign co-admins, and keep project access controlled.</p></div></article>
+          <article><span class="feature-icon">05</span><div><h3>Studio integration</h3><p>Connect the plugin with a project key and your RoWatch username.</p></div></article>
+          <article><span class="feature-icon">06</span><div><h3>Project-level privacy</h3><p>Every Studio request is checked against the project key and membership.</p></div></article>
+        </div>
+      </section>
+
+      <section id="how-it-works" class="section section-muted">
+        <div class="container split-section">
+          <div class="section-heading"><p class="eyebrow">HOW IT WORKS</p><h2>From Studio session to dashboard.</h2><p>One setup step, then the tracking runs alongside normal development.</p></div>
+          <ol class="steps">
+            <li><span>1</span><div><strong>Create a project</strong><p>Log in, create a RoWatch project, and open its Studio Integration page.</p></div></li>
+            <li><span>2</span><div><strong>Connect Roblox Studio</strong><p>Paste your username and project key into the RoWatch plugin.</p></div></li>
+            <li><span>3</span><div><strong>Work normally</strong><p>Start a session. RoWatch records session and script activity while you develop.</p></div></li>
+            <li><span>4</span><div><strong>Review progress</strong><p>Use Overview, Activity, and Analytics to understand how the project is moving.</p></div></li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="pricing" class="section container">
+        <div class="section-heading centered"><h2>Simple, transparent pricing</h2><p>Start free. Upgrade when your team or history needs more room.</p></div>
+        <div class="pricing-table" id="landingPricing">
+          <article class="price-card"><h3>Free</h3><div class="price"><strong>$0</strong><span>/ month</span></div><ul><li>1 project</li><li>Up to 5 members</li><li>7 days history</li><li>Basic analytics</li><li>No data export</li></ul><button class="btn btn-secondary full" data-route="register">Get started</button></article>
+          <article class="price-card featured"><div class="featured-label">Most popular</div><h3>Pro</h3><div class="price"><strong>$5.99</strong><span>/ month</span></div><ul><li>Up to 3 projects</li><li>Up to 15 members</li><li>2 months history</li><li>1 co-admin</li><li>CSV export</li></ul><button class="btn btn-primary full" data-plan="pro">Choose Pro</button></article>
+          <article class="price-card"><h3>Studio</h3><div class="price"><strong>$14.99</strong><span>/ month</span></div><ul><li>Unlimited projects</li><li>Unlimited members</li><li>Unlimited history</li><li>Unlimited co-admins</li><li>CSV export</li></ul><button class="btn btn-secondary full" data-plan="studio">Choose Studio</button></article>
+        </div>
+      </section>
+
+      <section id="docs" class="cta-section">
+        <div class="container cta-inner"><div><p class="eyebrow">READY TO CONNECT STUDIO?</p><h2>Set up your first tracked project.</h2></div><button class="btn btn-primary btn-lg" type="button" data-route="register">Create free account</button></div>
+      </section>
+
+      <footer class="site-footer">
+        <div class="container footer-grid">
+          <div><a class="brand footer-brand" href="#" data-route="home"><span class="brand-mark">R</span><span>RoWatch</span></a><p>Track Roblox development.<br />See real progress.</p></div>
+          <div><strong>Product</strong><a href="#features">Features</a><a href="#how-it-works">How it works</a><a href="#pricing">Pricing</a></div>
+          <div><strong>Resources</strong><a href="#docs">Docs</a><a href="#docs">Plugin setup</a><a href="#docs">API</a></div>
+          <div><strong>Company</strong><a href="#">About</a><a href="mailto:hello@rowatch.local">Contact</a><a href="#">Privacy</a></div>
+        </div>
+        <div class="container footer-bottom"><span>© 2026 RoWatch. All rights reserved.</span><span>Built for Roblox Studio teams.</span></div>
+      </footer>
+    </section>
+
+    <section id="view-login" class="view auth-view">
+      <div class="auth-shell">
+        <button class="text-link back-link" type="button" data-route="home">← Back to RoWatch</button>
+        <div class="auth-card">
+          <a class="brand" href="#" data-route="home"><span class="brand-mark">R</span><span>RoWatch</span></a>
+          <div><h1>Log in</h1><p>Continue to your projects.</p></div>
+          <form id="loginForm">
+            <label>Username or email<input id="loginId" autocomplete="username" required /></label>
+            <label>Password<input id="loginPw" type="password" autocomplete="current-password" required /></label>
+            <p id="loginError" class="form-error"></p>
+            <button class="btn btn-primary full" type="submit">Log in</button>
+          </form>
+          <p class="auth-switch">No account? <button class="text-link" type="button" data-route="register">Create one</button></p>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-register" class="view auth-view">
+      <div class="auth-shell">
+        <button class="text-link back-link" type="button" data-route="home">← Back to RoWatch</button>
+        <div class="auth-card">
+          <a class="brand" href="#" data-route="home"><span class="brand-mark">R</span><span>RoWatch</span></a>
+          <div><h1>Create your account</h1><p>Start with one free project.</p></div>
+          <form id="registerForm">
+            <label>Username<input id="regUser" autocomplete="username" minlength="3" required /></label>
+            <label>Email<input id="regEmail" type="email" autocomplete="email" required /></label>
+            <label>Password<input id="regPw" type="password" autocomplete="new-password" minlength="6" required /></label>
+            <p id="registerError" class="form-error"></p>
+            <button class="btn btn-primary full" type="submit">Create account</button>
+          </form>
+          <p class="auth-switch">Already have an account? <button class="text-link" type="button" data-route="login">Log in</button></p>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-projects" class="view app-page">
+      <header class="app-topbar">
+        <a class="brand" href="#" data-route="projects"><span class="brand-mark">R</span><span>RoWatch</span></a>
+        <div class="topbar-actions"><button id="projectsTheme" class="icon-btn" type="button" title="Switch theme">◐</button><button class="account-chip" type="button" data-route="account"><span id="projectsAvatar">Y</span><span id="projectsUsername">Account</span></button></div>
+      </header>
+      <div class="projects-shell container">
+        <div class="page-heading"><div><p class="eyebrow">WORKSPACES</p><h1>My Projects</h1><p>Select a project to open its dashboard.</p></div><button id="createProjectBtn" class="btn btn-primary" type="button">+ Create project</button></div>
+        <div id="projectsList" class="projects-grid"></div>
+      </div>
+    </section>
+
+    <section id="view-dashboard" class="view dashboard-view">
+      <button id="sidebarMobileButton" class="mobile-menu-btn" type="button" aria-label="Open sidebar">Menu</button>
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-head"><a class="brand inverse" href="#" data-route="projects"><span class="brand-mark">R</span><span>RoWatch</span></a><button id="sidebarClose" class="sidebar-close" type="button">×</button></div>
+        <div class="current-project"><span>CURRENT PROJECT</span><strong id="sidebarProjectName">Project</strong><small id="sidebarProjectPlan">Free plan</small></div>
+        <nav class="side-nav" aria-label="Project dashboard">
+          <p>PROJECT</p>
+          <button type="button" data-panel="overview" class="active">Overview</button>
+          <button type="button" data-panel="activity">Activity</button>
+          <button type="button" data-panel="analytics" class="admin-only">Analytics</button>
+          <button type="button" data-panel="members" class="admin-only">Members</button>
+          <p>SETUP & MANAGEMENT</p>
+          <button type="button" data-panel="integration">Studio Integration</button>
+          <button type="button" data-panel="settings" class="admin-only">Project Settings</button>
+        </nav>
+        <div class="sidebar-lower">
+          <button type="button" data-route="projects" class="my-projects-btn">← My Projects</button>
+          <div class="side-account">
+            <button id="themeToggle" type="button"><span>Theme</span><strong id="themeLabel">Light</strong></button>
+            <button type="button" data-panel="account"><span>Account</span><strong id="sideUsername">User</strong></button>
+            <button id="logoutButton" type="button" class="logout-btn">Log out</button>
+          </div>
+        </div>
+      </aside>
+      <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+      <div class="dashboard-main">
+        <header class="dashboard-topbar"><div><span id="topbarBreadcrumb">Project / Overview</span><h1 id="panelTitle">Overview</h1></div><div class="dashboard-top-actions"><span id="connectionBadge" class="status-box">Studio not checked</span><button class="account-chip" type="button" data-panel="account"><span id="dashboardAvatar">Y</span><span id="dashboardUsername">Account</span></button></div></header>
+        <div id="panelContent" class="dashboard-content"></div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="createProjectDialog" class="dialog">
+    <form method="dialog" id="createProjectForm">
+      <div class="dialog-head"><div><h2>Create project</h2><p>Projects group your Roblox Studio activity and team.</p></div><button value="cancel" class="dialog-x" aria-label="Close">×</button></div>
+      <label>Project name<input id="newProjectName" maxlength="128" placeholder="Vehicle Legends" required /></label>
+      <p id="createProjectError" class="form-error"></p>
+      <div class="dialog-actions"><button value="cancel" class="btn btn-secondary" type="button" data-dialog-close>Cancel</button><button class="btn btn-primary" type="submit">Create project</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="inviteDialog" class="dialog">
+    <form method="dialog" id="inviteForm">
+      <div class="dialog-head"><div><h2>Invite member</h2><p>Add an existing RoWatch user to this project.</p></div><button value="cancel" class="dialog-x" aria-label="Close">×</button></div>
+      <label>RoWatch username<input id="inviteUsername" required /></label>
+      <p id="inviteError" class="form-error"></p>
+      <div class="dialog-actions"><button class="btn btn-secondary" type="button" data-dialog-close>Cancel</button><button class="btn btn-primary" type="submit">Invite member</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="checkoutDialog" class="dialog">
+    <form method="dialog" id="checkoutForm">
+      <div class="dialog-head"><div><h2 id="checkoutTitle">Upgrade project</h2><p>Demo checkout activates the selected plan immediately.</p></div><button value="cancel" class="dialog-x" aria-label="Close">×</button></div>
+      <label>Project<select id="checkoutProject"></select></label>
+      <label>Duration<select id="checkoutDuration"><option value="1">1 month</option><option value="3">3 months</option><option value="12">1 year</option></select></label>
+      <p id="checkoutError" class="form-error"></p>
+      <div class="dialog-actions"><button class="btn btn-secondary" type="button" data-dialog-close>Cancel</button><button class="btn btn-primary" type="submit">Pay & activate</button></div>
+    </form>
+  </dialog>
+</body>
+</html>
