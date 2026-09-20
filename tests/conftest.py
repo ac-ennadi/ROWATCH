@@ -18,8 +18,8 @@ def app(tmp_path):
     application = create_app({
         "TESTING": True,
         "SQLALCHEMY_DATABASE_URI": f"sqlite:///{database}",
-        "SECRET_KEY": "test-secret",
-        "JWT_SECRET": "test-jwt-secret",
+        "SECRET_KEY": "test-secret-key-at-least-32-bytes-long",
+        "JWT_SECRET": "test-jwt-secret-at-least-32-bytes-long",
         "SESSION_COOKIE_SECURE": False,
     })
     yield application

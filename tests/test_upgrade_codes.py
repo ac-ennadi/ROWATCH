@@ -14,8 +14,8 @@ def test_admin_bootstraps_from_environment_and_can_login(tmp_path, monkeypatch):
     application = create_app({
         "TESTING": True,
         "SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path / 'admin.db'}",
-        "SECRET_KEY": "test-secret",
-        "JWT_SECRET": "test-jwt",
+        "SECRET_KEY": "test-secret-key-at-least-32-bytes-long",
+        "JWT_SECRET": "test-jwt-secret-at-least-32-bytes-long",
     })
     client = application.test_client()
     login = client.post("/auth/login", json={"username": "EnvAdmin", "password": "strong-admin-password"})
