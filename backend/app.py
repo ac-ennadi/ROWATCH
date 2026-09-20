@@ -42,6 +42,7 @@ def create_app(test_config=None):
         app.register_blueprint(plugin_tasks_bp)
         db.create_all()
         migrate_legacy_project_plans()
+        bootstrap_admin_account()
 
     @app.get("/health")
     def health():
@@ -57,6 +58,34 @@ def create_app(test_config=None):
         return send_from_directory(FRONTEND_DIR, "index.html")
 
     return app
+
+
+def bootstrap_admin_account():
+    """Create or synchronize the admin account from environment variables."""
+    from werkzeug.security import generate_password_hash
+    from models import User
+
+    username = os.environ.get("ROWATCH_ADMIN_USERNAME", "").strip()
+    email = os.environ.get("ROWATCH_ADMIN_EMAIL", "").strip().lower()
+    password = os.environ.get("ROWATCH_ADMIN_PASSWORD", "")
+    if not username and not email and not password:
+        return
+    if not username or not email or len(password) < 12:
+        raise RuntimeError("ROWATCH_ADMIN_USERNAME, ROWATCH_ADMIN_EMAIL, and a 12+ character ROWATCH_ADMIN_PASSWORD are required")
+    by_username = User.query.filter_by(username=username).first()
+    by_email = User.query.filter_by(email=email).first()
+    if by_username and by_email and by_username.id != by_email.id:
+        raise RuntimeError("Admin username and email belong to different accounts")
+    user = by_username or by_email
+    if not user:
+        user = User(username=username, email=email, password_hash=generate_password_hash(password), is_admin=True)
+        db.session.add(user)
+    else:
+        user.username = username
+        user.email = email
+        user.password_hash = generate_password_hash(password)
+        user.is_admin = True
+    db.session.commit()
 
 
 def migrate_legacy_project_plans():

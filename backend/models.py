@@ -202,6 +202,35 @@ class AccountPayment(db.Model):
     user = db.relationship("User", back_populates="account_payments")
 
 
+class UpgradeCode(db.Model):
+    __tablename__ = "upgrade_codes"
+    id             = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    code_hash      = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    code_prefix    = db.Column(db.String(8), nullable=False)
+    plan           = db.Column(db.String(16), nullable=False)
+    duration_days  = db.Column(db.Integer, nullable=False)
+    expires_at     = db.Column(db.DateTime, nullable=True)
+    created_by_id  = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
+    created_at     = db.Column(db.DateTime, default=datetime.utcnow)
+    redeemed_by_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=True)
+    redeemed_at    = db.Column(db.DateTime, nullable=True)
+    revoked_at     = db.Column(db.DateTime, nullable=True)
+    note           = db.Column(db.Text, default="")
+
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
+    redeemed_by = db.relationship("User", foreign_keys=[redeemed_by_id])
+
+    @property
+    def status(self):
+        if self.revoked_at:
+            return "revoked"
+        if self.redeemed_at:
+            return "redeemed"
+        if self.expires_at and self.expires_at < datetime.utcnow():
+            return "expired"
+        return "unused"
+
+
 class Payment(db.Model):
     __tablename__ = "payments"
     id          = db.Column(db.String(36), primary_key=True, default=gen_uuid)

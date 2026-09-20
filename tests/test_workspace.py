@@ -56,7 +56,7 @@ def test_members_read_docs_but_only_admins_write(app):
     assert outsider.get(f"/workspace/{project['id']}/documents").status_code == 403
 
 
-def test_free_limits_and_pro_unlimited(app, monkeypatch):
+def test_free_limits_and_pro_unlimited(app, monkeypatch, issue_code):
     monkeypatch.setitem(PLAN_LIMITS["free"], "tasks", 1)
     monkeypatch.setitem(PLAN_LIMITS["free"], "documents", 1)
     owner = app.test_client()
@@ -68,6 +68,6 @@ def test_free_limits_and_pro_unlimited(app, monkeypatch):
     assert owner.post(f"{base}/documents", json={"title": "One"}).status_code == 201
     assert owner.post(f"{base}/documents", json={"title": "Two"}).status_code == 403
 
-    assert owner.post("/payments/checkout", json={"plan": "pro", "duration_months": 1}).status_code == 200
+    assert owner.post("/payments/codes/redeem", json={"code": issue_code("pro")}).status_code == 200
     assert owner.post(f"{base}/tasks", json={"title": "Two"}).status_code == 201
     assert owner.post(f"{base}/documents", json={"title": "Two"}).status_code == 201

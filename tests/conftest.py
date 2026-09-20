@@ -9,7 +9,7 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from app import create_app
-from models import db
+from models import User, db
 
 
 @pytest.fixture
@@ -52,3 +52,24 @@ def project(registered_client):
     response = registered_client.post("/projects/", json={"name": "Test Project"})
     assert response.status_code == 201
     return response.get_json()
+
+
+@pytest.fixture
+def code_admin(app):
+    admin = app.test_client()
+    assert register(admin, "CodeAdmin").status_code == 201
+    with app.app_context():
+        user = User.query.filter_by(username="CodeAdmin").first()
+        user.is_admin = True
+        db.session.commit()
+    return admin
+
+
+@pytest.fixture
+def issue_code(code_admin):
+    def issue(plan="pro", duration_days=30, **extra):
+        payload = {"plan": plan, "duration_days": duration_days, **extra}
+        response = code_admin.post("/payments/codes", json=payload)
+        assert response.status_code == 201, response.get_json()
+        return response.get_json()["codes"][0]["code"]
+    return issue

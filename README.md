@@ -44,7 +44,8 @@ The Flask app serves the files from `../frontend`, so you only need one process 
 Requirements: Docker Engine with the Compose plugin.
 
 ```bash
-# Edit the root .env and set strong SECRET_KEY and JWT_SECRET values, then run:
+# Copy .env.orig to .env, then set strong secrets and admin credentials:
+cp .env.orig .env
 docker compose up --build -d
 ```
 
@@ -57,7 +58,9 @@ docker compose logs -f rowatch
 
 Stop the application with `docker compose down`. User and project data is stored in
 the `rowatch_data` Docker volume and survives container replacement. To use a
-different host port, set `ROWATCH_PORT` in `.env`.
+different host port, set `ROWATCH_PORT` in `.env`. The startup admin account is controlled by
+`ROWATCH_ADMIN_USERNAME`, `ROWATCH_ADMIN_EMAIL`, and `ROWATCH_ADMIN_PASSWORD`
+(the password must contain at least 12 characters).
 
 For a direct image build without Compose:
 

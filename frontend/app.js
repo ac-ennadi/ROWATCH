@@ -718,14 +718,48 @@
       {id:'pro',price:'$5.99',period:'month',features:['3 owned projects','15 members per project','Unlimited tasks & documents','60 days history']},
       {id:'studio',price:'$14.99',period:'month',features:['Unlimited projects','Unlimited members','Unlimited tasks & documents','Unlimited history']},
     ];
-    return `<section class="account-plans"><div class="panel-card-head"><div><h2>Account plan</h2><p>Your plan applies to every project you own. Current: <strong>${esc(current.toUpperCase())}</strong> · ${esc(expires)}</p></div></div><div class="account-plan-grid">${plans.map(plan=>`<article class="account-plan-card ${current===plan.id?'current':''}"><div><h3>${plan.id[0].toUpperCase()+plan.id.slice(1)}</h3>${current===plan.id?'<span class="plan-tag">Current</span>':''}</div><p class="account-plan-price"><strong>${plan.price}</strong><span> / ${plan.period}</span></p><ul>${plan.features.map(feature=>`<li>${esc(feature)}</li>`).join('')}</ul><button class="btn ${current===plan.id?'btn-secondary':'btn-primary'} full" type="button" data-account-plan="${plan.id}" ${current===plan.id?'disabled':''}>${current===plan.id?'Current plan':`Choose ${plan.id[0].toUpperCase()+plan.id.slice(1)}`}</button></article>`).join('')}</div></section>`;
+    const adminGenerator = state.user?.is_admin ? `<section class="admin-code-generator"><h3>Admin · Generate upgrade codes</h3><div class="code-generator-grid"><label>Plan<select data-code-plan><option value="pro">Pro</option><option value="studio">Studio</option></select></label><label>Duration (days)<input data-code-days type="number" min="1" max="3650" value="30"/></label><label>Quantity<input data-code-quantity type="number" min="1" max="100" value="1"/></label><button class="btn btn-secondary" type="button" data-generate-codes>Generate</button></div><p class="form-error" data-code-admin-error></p><textarea data-generated-codes rows="4" readonly placeholder="New raw codes appear here once"></textarea></section>` : '';
+    return `<section class="account-plans"><div class="panel-card-head"><div><h2>Account plan</h2><p>Your plan applies to every project you own. Current: <strong>${esc(current.toUpperCase())}</strong> · ${esc(expires)}</p></div></div><div class="account-plan-grid">${plans.map(plan=>`<article class="account-plan-card ${current===plan.id?'current':''}"><div><h3>${plan.id[0].toUpperCase()+plan.id.slice(1)}</h3>${current===plan.id?'<span class="plan-tag">Current</span>':''}</div><p class="account-plan-price"><strong>${plan.price}</strong><span> / ${plan.period}</span></p><ul>${plan.features.map(feature=>`<li>${esc(feature)}</li>`).join('')}</ul><button class="btn ${(current===plan.id||(plan.id==='free'&&current!=='free'))?'btn-secondary':'btn-primary'} full" type="button" data-account-plan="${plan.id}" ${(current===plan.id||(plan.id==='free'&&current!=='free'))?'disabled':''}>${current===plan.id?'Current plan':plan.id==='free'?'Available after paid term':`Use ${plan.id[0].toUpperCase()+plan.id.slice(1)} code`}</button></article>`).join('')}</div><section class="redeem-code-box"><div><h3>Redeem upgrade code</h3><p>Enter the 64-character hexadecimal code supplied by RoWatch.</p></div><div class="redeem-code-line"><input data-upgrade-code maxlength="64" autocomplete="off" spellcheck="false" placeholder="64-character upgrade code"/><button class="btn btn-primary" type="button" data-redeem-code>Redeem</button></div><p class="form-error" data-redeem-error></p></section>${adminGenerator}</section>`;
   }
 
   function wireAccountPlanButtons(root=document) {
     $$('[data-account-plan]',root).forEach(button=>button.addEventListener('click',()=>{
-      button.closest('dialog')?.close();
-      openCheckout(button.dataset.accountPlan);
+      if(button.dataset.accountPlan === 'free'){
+        button.closest('dialog')?.close();
+        openCheckout('free');
+      } else {
+        const input=$('[data-upgrade-code]',root);
+        input?.focus();
+        input?.scrollIntoView({behavior:'smooth',block:'center'});
+      }
     }));
+    $('[data-redeem-code]',root)?.addEventListener('click',()=>redeemUpgradeCode(root));
+    $('[data-upgrade-code]',root)?.addEventListener('keydown',event=>{if(event.key==='Enter')redeemUpgradeCode(root);});
+    $('[data-generate-codes]',root)?.addEventListener('click',()=>generateUpgradeCodes(root));
+  }
+
+  async function redeemUpgradeCode(root) {
+    const input=$('[data-upgrade-code]',root);
+    const error=$('[data-redeem-error]',root);
+    const code=input.value.trim();
+    error.textContent='';
+    const result=await api('/payments/codes/redeem',{method:'POST',body:JSON.stringify({code})});
+    if(!result.ok)return error.textContent=result.data.error||'Could not redeem code.';
+    await checkAuth();
+    input.value='';
+    toast(`${result.data.plan.toUpperCase()} activated for ${result.data.duration_days} days`);
+    if(root.closest('dialog')){root.closest('dialog').close();await route('projects');}
+    else await loadAccountPanel();
+  }
+
+  async function generateUpgradeCodes(root) {
+    const error=$('[data-code-admin-error]',root);
+    const output=$('[data-generated-codes]',root);
+    error.textContent='';output.value='';
+    const result=await api('/payments/codes',{method:'POST',body:JSON.stringify({plan:$('[data-code-plan]',root).value,duration_days:Number($('[data-code-days]',root).value),quantity:Number($('[data-code-quantity]',root).value)})});
+    if(!result.ok)return error.textContent=result.data.error||'Could not generate codes.';
+    output.value=result.data.codes.map(item=>item.code).join('\n');
+    toast(`${result.data.codes.length} upgrade code${result.data.codes.length===1?'':'s'} generated`);
   }
 
   async function loadAccountPanel() {
@@ -773,10 +807,12 @@
   async function openCheckout(plan) {
     state.checkoutPlan = plan;
     if (!state.user) return route('register');
-    el('checkoutTitle').textContent = `Choose ${plan[0].toUpperCase()+plan.slice(1)} account plan`;
-    el('checkoutError').textContent = '';
-    el('checkoutDuration').closest('label').style.display = plan === 'free' ? 'none' : '';
-    el('checkoutDialog').showModal();
+    if(plan !== 'free'){
+      toast('Redeem your upgrade code in Account');
+      return route('account');
+    }
+    toast(state.user.plan === 'free' ? 'Your account is already on Free' : 'Paid plans return to Free only when their term expires');
+    return route('account');
   }
 
   async function checkout(event) {
