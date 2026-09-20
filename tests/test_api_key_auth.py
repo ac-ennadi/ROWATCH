@@ -74,3 +74,22 @@ def test_studio_rejects_old_shared_key_and_username_headers(registered_client, p
     })
     assert response.status_code == 401
     assert response.get_json()["api_key_required"] is True
+
+
+def test_legacy_and_v1_plugin_routes_remain_compatible(registered_client, project):
+    key = issue_api_key(registered_client)
+    account_headers = {"X-API-Key": key}
+    project_headers = {**account_headers, "X-Project-ID": project["id"]}
+
+    route_pairs = [
+        ("/api/plugin/projects", "/api/v1/plugin/projects", account_headers),
+        ("/api/events/ping", "/api/v1/events/ping", project_headers),
+        ("/api/tasks", "/api/v1/tasks", project_headers),
+    ]
+    for legacy_path, v1_path, headers in route_pairs:
+        legacy = registered_client.get(legacy_path, headers=headers)
+        versioned = registered_client.get(v1_path, headers=headers)
+        assert legacy.status_code == versioned.status_code == 200
+        assert legacy.get_json() == versioned.get_json()
+        assert legacy.headers["X-RoWatch-API-Version"] == "legacy"
+        assert versioned.headers["X-RoWatch-API-Version"] == "1"

@@ -45,6 +45,12 @@ def create_app(test_config=None):
         app.register_blueprint(payments_bp)
         app.register_blueprint(workspace_bp)
         app.register_blueprint(plugin_tasks_bp)
+
+        # Versioned Studio API. Keep the original routes registered as the
+        # permanent legacy contract for already-installed plugin versions.
+        app.register_blueprint(events_bp, url_prefix="/api/v1/events", name_prefix="v1")
+        app.register_blueprint(plugin_projects_bp, url_prefix="/api/v1/plugin", name_prefix="v1")
+        app.register_blueprint(plugin_tasks_bp, url_prefix="/api/v1/tasks", name_prefix="v1")
         db.create_all()
         ensure_tracking_consent_columns()
         ensure_document_editor_column()
@@ -69,6 +75,10 @@ def create_app(test_config=None):
         response.headers.setdefault("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
         if request.is_secure:
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        if request.path.startswith("/api/v1/"):
+            response.headers.setdefault("X-RoWatch-API-Version", "1")
+        elif request.path.startswith(("/api/events/", "/api/plugin/", "/api/tasks")):
+            response.headers.setdefault("X-RoWatch-API-Version", "legacy")
         return response
 
     @app.get("/health")

@@ -366,7 +366,7 @@ local function saveAccountConnection(rawKey, data)
 end
 
 local function fetchAccountProjects(rawKey)
-    return requestApi("/api/plugin/projects", "GET", nil, {
+    return requestApi("/api/v1/plugin/projects", "GET", nil, {
         ["X-API-Key"] = rawKey,
     })
 end
@@ -410,7 +410,7 @@ local function beginDocumentTracking(document)
         lastText = text,
     }
 
-    apiCall(activeProfile, "/api/events/script/open", "POST", {
+    apiCall(activeProfile, "/api/v1/events/script/open", "POST", {
         session_id = sessionId,
         script = scriptObject:GetFullName(),
     })
@@ -438,7 +438,7 @@ local function finishDocumentTracking(document)
     if ok then info.lastText = text end
 
     if sessionId and activeProfile then
-        apiCall(activeProfile, "/api/events/script/close", "POST", {
+        apiCall(activeProfile, "/api/v1/events/script/close", "POST", {
             session_id = sessionId,
             script = info.name,
             chars_added = math.max(#info.lastText - #info.startText, 0),
@@ -539,7 +539,7 @@ local function flushInstanceQueue()
         table.insert(batch, item)
     end
     if #batch > 0 then
-        apiCall(activeProfile, "/api/events/instance/change", "POST", {
+        apiCall(activeProfile, "/api/v1/events/instance/change", "POST", {
             session_id = sessionId,
             events = batch,
         })
@@ -561,7 +561,7 @@ task.spawn(function()
             flushInstanceQueue()
             if os.time() - lastHeartbeat >= 5 then
                 lastHeartbeat = os.time()
-                apiCall(activeProfile, "/api/events/session/heartbeat", "POST", {session_id = sessionId})
+                apiCall(activeProfile, "/api/v1/events/session/heartbeat", "POST", {session_id = sessionId})
             end
         end
     end
@@ -607,7 +607,7 @@ showTasks = function(profile, message)
     label("Assigned to you", 24, COLORS.text, 14, true, intro)
     label("Only tasks assigned to @" .. pluginUsername .. " appear here. Select a task to change your completion status.", 38, COLORS.muted, 10, false, intro)
 
-    local tasks, err = apiCall(profile, "/api/tasks", "GET")
+    local tasks, err = apiCall(profile, "/api/v1/tasks", "GET")
     if not tasks then
         banner("Could not load tasks: " .. (err or "unknown error"), "error")
     elseif #tasks == 0 then
@@ -644,7 +644,7 @@ showTasks = function(profile, message)
 
             taskButton.MouseButton1Click:Connect(function()
                 local nextCompleted = not taskItem.my_completed
-                local _, toggleError = apiCall(profile, "/api/tasks/" .. taskItem.id .. "/complete", "POST", {
+                local _, toggleError = apiCall(profile, "/api/v1/tasks/" .. taskItem.id .. "/complete", "POST", {
                     completed = nextCompleted,
                 })
                 if toggleError then
@@ -689,7 +689,7 @@ showProjects = function(message, isError)
         local startButton = button("Start session", COLORS.accent, COLORS.white, 40, profileCard)
         startButton.MouseButton1Click:Connect(function()
             startButton.Text = "Connecting..."
-            local data, err = apiCall(profile, "/api/events/session/start", "POST")
+            local data, err = apiCall(profile, "/api/v1/events/session/start", "POST")
             if data and data.session_id then
                 activeProfile = profile
                 sessionId = data.session_id
@@ -754,7 +754,7 @@ showActive = function()
         finish.Text = "Saving session..."
         flushInstanceQueue()
         finishAllDocumentTracking()
-        apiCall(activeProfile, "/api/events/session/end", "POST", {session_id = sessionId})
+        apiCall(activeProfile, "/api/v1/events/session/end", "POST", {session_id = sessionId})
         sessionId = nil
         sessionStart = nil
         activeProfile = nil
@@ -820,7 +820,7 @@ plugin.Unloading:Connect(function()
     if sessionId and activeProfile then
         flushInstanceQueue()
         finishAllDocumentTracking()
-        apiCall(activeProfile, "/api/events/session/end", "POST", {session_id = sessionId})
+        apiCall(activeProfile, "/api/v1/events/session/end", "POST", {session_id = sessionId})
     end
 end)
 

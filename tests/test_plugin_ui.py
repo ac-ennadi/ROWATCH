@@ -42,13 +42,13 @@ def test_task_completion_updates_in_place():
 def test_plugin_core_tracking_and_multi_project_behavior_remain_connected():
     lua = source()
     for endpoint in (
-        "/api/events/session/start",
-        "/api/events/session/heartbeat",
-        "/api/events/session/end",
-        "/api/events/script/open",
-        "/api/events/script/close",
-        "/api/events/instance/change",
-        "/api/tasks",
+        "/api/v1/events/session/start",
+        "/api/v1/events/session/heartbeat",
+        "/api/v1/events/session/end",
+        "/api/v1/events/script/open",
+        "/api/v1/events/script/close",
+        "/api/v1/events/instance/change",
+        "/api/v1/tasks",
     ):
         assert endpoint in lua
     assert 'plugin:GetSetting("rw_projects")' in lua
@@ -57,7 +57,7 @@ def test_plugin_core_tracking_and_multi_project_behavior_remain_connected():
     assert 'plugin:SetSetting("rw_account_api_key", accountApiKey)' in lua
     assert '["X-API-Key"] = accountApiKey' in lua
     assert '["X-Project-ID"] = profile.id' in lua
-    assert '"/api/plugin/projects"' in lua
+    assert '"/api/v1/plugin/projects"' in lua
     assert 'X-Username' not in lua
     assert 'X-Project-Key' not in lua
     assert "instance:IsDescendantOf(StarterGui) or instance:IsDescendantOf(Workspace)" in lua
