@@ -20,13 +20,11 @@
     <nav class="public-links" aria-label="Primary navigation">
       <a href="#features">Features</a>
       <a href="#pricing">Pricing</a>
-      <a href="#how-it-works">How it works</a>
       <a href="#docs">Docs</a>
     </nav>
     <div class="nav-actions">
-      <button class="btn btn-ghost" id="publicTheme" type="button">Theme</button>
       <button class="btn btn-ghost" type="button" data-route="login">Log in</button>
-      <button class="btn btn-primary" type="button" data-route="register">Get started free</button>
+      <button class="btn btn-primary" type="button" data-route="register">Get started</button>
     </div>
   </header>
 
@@ -34,18 +32,11 @@
     <section id="view-home" class="view active">
       <section class="hero container">
         <div class="hero-copy">
-          <p class="eyebrow">ROBLOX STUDIO TEAM TRACKING</p>
-          <h1>Track Roblox development.<br /><span class="accent-text">See real progress.</span></h1>
-          <p class="hero-lede">RoWatch records development time, script changes, and team activity directly from Roblox Studio. Built for developers who need useful data, not surveillance.</p>
+          <h1>See how your Roblox project is moving.</h1>
+          <p class="hero-lede">Track development sessions, code activity, and team progress from Roblox Studio.</p>
           <div class="hero-actions">
-            <button class="btn btn-primary btn-lg" type="button" data-route="register">Start for free</button>
+            <button class="btn btn-primary btn-lg" type="button" data-route="register">Get started free</button>
             <a class="btn btn-secondary btn-lg" href="https://create.roblox.com/store/asset/92589984687196/RoWatch-Beta" target="_blank" rel="noopener noreferrer">Get Studio plugin</a>
-            <a class="btn btn-ghost btn-lg" href="#pricing">View pricing</a>
-          </div>
-          <div class="hero-points" aria-label="Product highlights">
-            <div><strong>Team friendly</strong><span>Roles and permissions</span></div>
-            <div><strong>Useful analytics</strong><span>Time, edits, sessions</span></div>
-            <div><strong>Studio native</strong><span>Plugin-based tracking</span></div>
           </div>
         </div>
 
@@ -54,72 +45,70 @@
             <div class="preview-brand"><span class="brand-mark small">R</span>RoWatch</div>
             <div class="preview-project"><span>Project</span><strong>Vehicle Legends</strong></div>
             <div class="preview-nav">
-              <div class="selected">Overview</div><div>Activity</div><div>Analytics</div><div>Members</div><div>Studio Integration</div><div>Project Settings</div>
+              <div class="selected">Overview</div><div>Activity</div><div>Analytics</div><div>Members</div><div>Studio Integration</div><div>Settings</div>
             </div>
-            <div class="preview-nav lower"><div>← My Projects</div><div>Light / Dark</div><div>Account</div></div>
+            <div class="preview-nav lower"><div>← My Projects</div></div>
           </aside>
           <div class="preview-main">
             <div class="preview-top"><strong>Overview</strong><span>May 12 – May 18</span></div>
             <div class="preview-stats">
-              <div><span>Total time</span><strong>142h 36m</strong><small>+12.5%</small></div>
-              <div><span>Characters added</span><strong>1.2M</strong><small>+8.4%</small></div>
-              <div><span>Characters removed</span><strong>320K</strong><small class="down">-3.1%</small></div>
-              <div><span>Sessions</span><strong>48</strong><small>+6.7%</small></div>
+              <div><strong>142h 36m</strong><span>Development time</span></div>
+              <div><strong>1.2M</strong><span>Characters</span></div>
+              <div><strong>48</strong><span>Sessions</span></div>
             </div>
             <div class="preview-grid">
               <div class="preview-chart-card"><span>Activity this week</span><div class="mini-chart"><i style="height:28%"></i><i style="height:44%"></i><i style="height:36%"></i><i style="height:67%"></i><i style="height:51%"></i><i style="height:40%"></i><i style="height:57%"></i><i style="height:78%"></i><i style="height:82%"></i><i style="height:96%"></i></div></div>
-              <div class="preview-members"><span>Top members</span><ol><li><b>Yora</b><em>42h 15m</em></li><li><b>Lxst</b><em>28h 10m</em></li><li><b>Kamii</b><em>21h 34m</em></li><li><b>NotCube</b><em>18h 23m</em></li></ol></div>
+              <div class="preview-members"><span>Top members</span><ol><li><b>Yora</b><em>42h 15m</em></li><li><b>Lxst</b><em>28h 10m</em></li><li><b>Kamii</b><em>21h 34m</em></li></ol></div>
             </div>
-            <div class="preview-activity"><span>Recent activity</span><div><b>Yora</b><code>ServerScriptService.Main</code><em>Script closed</em><strong>+153 / -24</strong></div></div>
+            <div class="preview-activity"><span>Recent activity</span><div><b>Yora</b><code>ServerScriptService.Main</code><strong>+153 / -24</strong></div></div>
           </div>
         </div>
       </section>
 
       <section id="features" class="section container">
-        <div class="section-heading centered"><h2>Everything you need to ship better</h2><p>Practical tracking for Roblox developers and teams.</p></div>
+        <div class="section-heading centered"><h2>Built for Studio teams.</h2></div>
         <div class="feature-grid">
-          <article><span class="feature-icon">01</span><div><h3>Time tracking</h3><p>Record real development time with Studio sessions instead of manual timers.</p></div></article>
-          <article><span class="feature-icon">02</span><div><h3>Code change tracking</h3><p>See characters added and removed, plus script open and close activity.</p></div></article>
-          <article><span class="feature-icon">03</span><div><h3>Readable analytics</h3><p>Compare team activity by day, member, session, and total development time.</p></div></article>
-          <article><span class="feature-icon">04</span><div><h3>Team management</h3><p>Invite members, assign co-admins, and keep project access controlled.</p></div></article>
-          <article><span class="feature-icon">05</span><div><h3>Studio integration</h3><p>Paste your account API key once, then select any project you belong to.</p></div></article>
-          <article><span class="feature-icon">06</span><div><h3>Project-level privacy</h3><p>Every Studio request is checked against the API-key account and project membership.</p></div></article>
+          <article><h3>Sessions</h3><p>See how much time is spent actively developing.</p></article>
+          <article><h3>Code activity</h3><p>Track script activity and code changes.</p></article>
+          <article><h3>Analytics</h3><p>See progress by day, session, and member.</p></article>
+          <article><h3>Team access</h3><p>Invite developers and manage project roles.</p></article>
+          <article><h3>Studio plugin</h3><p>Start and stop tracking directly in Studio.</p></article>
+          <article><h3>Project scoped</h3><p>Activity stays attached to the selected project.</p></article>
         </div>
       </section>
 
       <section id="how-it-works" class="section section-muted">
-        <div class="container split-section">
-          <div class="section-heading"><p class="eyebrow">HOW IT WORKS</p><h2>From Studio session to dashboard.</h2><p>One setup step, then the tracking runs alongside normal development.</p></div>
+        <div class="container">
+          <div class="section-heading centered"><h2>Start tracking in minutes.</h2></div>
           <ol class="steps">
-            <li><span>1</span><div><strong>Create a project</strong><p>Log in, create a RoWatch project, and open its Studio Integration page.</p></div></li>
-            <li><span>2</span><div><strong>Connect Roblox Studio</strong><p>Copy your account API key into the plugin and select a fetched project.</p></div></li>
-            <li><span>3</span><div><strong>Work normally</strong><p>Start a session. RoWatch records session and script activity while you develop.</p></div></li>
-            <li><span>4</span><div><strong>Review progress</strong><p>Use Overview, Activity, and Analytics to understand how the project is moving.</p></div></li>
+            <li><span>01</span><div><strong>Create a project</strong><p>Set up your team on RoWatch.</p></div></li>
+            <li><span>02</span><div><strong>Connect Studio</strong><p>Install the plugin and choose your project.</p></div></li>
+            <li><span>03</span><div><strong>Start a session</strong><p>Work normally. Review the results afterward.</p></div></li>
           </ol>
         </div>
       </section>
 
       <section id="pricing" class="section container">
-        <div class="section-heading centered"><h2>Simple, transparent pricing</h2><p>Start free. Upgrade when your team or history needs more room.</p></div>
+        <div class="section-heading centered"><h2>Pricing that scales with your team.</h2></div>
         <div class="pricing-table" id="landingPricing">
-          <article class="price-card"><h3>Free</h3><div class="price"><strong>$0</strong><span>/ month</span></div><ul><li>1 project</li><li>Up to 5 members</li><li>7 days history</li><li>10 tasks · 3 documents</li><li>Basic analytics</li><li>No data export</li></ul><button class="btn btn-secondary full" data-route="register">Get started</button></article>
-          <article class="price-card featured"><div class="featured-label">Most popular</div><h3>Pro</h3><div class="price"><strong>$5.99</strong><span>/ month</span></div><ul><li>Up to 3 projects</li><li>Up to 15 members</li><li>2 months history</li><li>1 co-admin</li><li>Unlimited tasks & documents</li><li>CSV export</li></ul><button class="btn btn-primary full" data-plan="pro">Choose Pro</button></article>
+          <article class="price-card"><h3>Free</h3><div class="price"><strong>$0</strong></div><ul><li>1 project</li><li>5 members</li><li>7-day history</li><li>Basic analytics</li></ul><button class="btn btn-secondary full" data-route="register">Start free</button></article>
+          <article class="price-card"><h3>Pro</h3><div class="price"><strong>$5.99</strong><span>/ month</span></div><ul><li>3 projects</li><li>15 members</li><li>2-month history</li><li>1 co-admin</li><li>CSV export</li><li>Unlimited tasks &amp; documents</li></ul><button class="btn btn-primary full" data-plan="pro">Choose Pro</button></article>
           <article class="price-card"><h3>Studio</h3><div class="price"><strong>$14.99</strong><span>/ month</span></div><ul><li>Unlimited projects</li><li>Unlimited members</li><li>Unlimited history</li><li>Unlimited co-admins</li><li>CSV export</li></ul><button class="btn btn-secondary full" data-plan="studio">Choose Studio</button></article>
         </div>
       </section>
 
       <section id="docs" class="cta-section">
-        <div class="container cta-inner"><div><p class="eyebrow">READY TO CONNECT STUDIO?</p><h2>Set up your first tracked project.</h2></div><button class="btn btn-primary btn-lg" type="button" data-route="register">Create free account</button></div>
+        <div class="container cta-inner"><h2>Ready to track your first project?</h2><div class="cta-actions"><button class="btn btn-primary btn-lg" type="button" data-route="register">Create free account</button><a class="btn btn-secondary btn-lg" href="https://create.roblox.com/store/asset/92589984687196/RoWatch-Beta" target="_blank" rel="noopener noreferrer">Get Studio plugin</a></div></div>
       </section>
 
       <footer class="site-footer">
         <div class="container footer-grid">
-          <div><a class="brand footer-brand" href="#" data-route="home"><span class="brand-mark">R</span><span>RoWatch</span></a><p>Track Roblox development.<br />See real progress.</p></div>
-          <div><strong>Product</strong><a href="#features">Features</a><a href="#how-it-works">How it works</a><a href="#pricing">Pricing</a></div>
-          <div><strong>Resources</strong><a href="#docs">Docs</a><a href="#docs">Plugin setup</a><a href="#docs">API</a></div>
-          <div><strong>Company</strong><a href="#">About</a><a href="mailto:hello@rowatch.local">Contact</a><a href="#">Privacy</a></div>
+          <div><a class="brand footer-brand" href="#" data-route="home"><span class="brand-mark">R</span><span>RoWatch</span></a><p>Development tracking for Roblox Studio teams.</p></div>
+          <div><strong>Product</strong><a href="#features">Features</a><a href="#pricing">Pricing</a><a href="https://create.roblox.com/store/asset/92589984687196/RoWatch-Beta" target="_blank" rel="noopener noreferrer">Studio Plugin</a></div>
+          <div><strong>Resources</strong><a href="#docs">Docs</a><a href="#docs">API</a></div>
+          <div><strong>Company</strong><a href="mailto:hello@rowatch.local">Contact</a><a href="#">Privacy</a><a href="#">Terms</a></div>
         </div>
-        <div class="container footer-bottom"><span>© 2026 RoWatch. All rights reserved.</span><span>Built for Roblox Studio teams.</span></div>
+        <div class="container footer-bottom"><span>© 2026 RoWatch</span><span>Not affiliated with Roblox Corporation.</span></div>
       </footer>
     </section>
 

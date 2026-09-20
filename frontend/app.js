@@ -938,7 +938,7 @@
     el('createProjectBtn').addEventListener('click', openCreateProject);
     el('logoutButton').addEventListener('click', logout);
     el('themeToggle').addEventListener('click', toggleTheme);
-    el('publicTheme').addEventListener('click', toggleTheme);
+    el('publicTheme')?.addEventListener('click', toggleTheme);
     el('projectsTheme').addEventListener('click', toggleTheme);
     el('sidebarMobileButton').addEventListener('click', openSidebar);
     el('sidebarClose').addEventListener('click', closeSidebar);
