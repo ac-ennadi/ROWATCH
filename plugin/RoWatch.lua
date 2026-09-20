@@ -632,7 +632,7 @@ showSettings = function(message)
     clear()
     header("Account")
     if message then banner(message, "error") end
-    intro("RoWatch account", "Plugin settings", "Only settings that matter inside Studio.")
+    intro("RoWatch account", "Plugin settings")
 
     local accountCard = card(nil, 12, 9)
     label("CONNECTED ACCOUNT", 18, COLORS.muted, 9, true, accountCard)
@@ -687,26 +687,64 @@ showTasks = function(profile, message)
             taskButton.TextTruncate = Enum.TextTruncate.AtEnd
             addPadding(taskButton, 10, 0)
 
-            local function updateTaskVisual()
-                taskButton.Text = "•  " .. taskItem.title
-                taskButton.TextColor3 = taskItem.my_completed and COLORS.good or COLORS.text
-                taskButton.BackgroundColor3 = COLORS.panel
-                taskButton:SetAttribute("BaseColor", COLORS.panel)
+            local taskBusy = false
+
+            local function updateTaskVisual(animate)
+                local targetColor = taskItem.my_completed and COLORS.good or COLORS.text
+                local targetBackground = taskItem.my_completed and COLORS.goodSoft or COLORS.panel
+
+                taskButton.Text = (taskItem.my_completed and "✓  " or "•  ") .. taskItem.title
+                taskButton:SetAttribute("BaseColor", targetBackground)
+
+                if animate then
+                    TweenService:Create(taskButton, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        BackgroundColor3 = targetBackground,
+                        TextColor3 = targetColor,
+                    }):Play()
+                else
+                    taskButton.BackgroundColor3 = targetBackground
+                    taskButton.TextColor3 = targetColor
+                end
             end
-            updateTaskVisual()
+            updateTaskVisual(false)
 
             taskButton.MouseButton1Click:Connect(function()
-                local nextCompleted = not taskItem.my_completed
+                if taskBusy then return end
+                taskBusy = true
+                taskButton.Active = false
+
+                local previousCompleted = taskItem.my_completed
+                local nextCompleted = not previousCompleted
+
+                -- Update immediately so completing a task feels responsive instead of reloading the page.
+                taskItem.my_completed = nextCompleted
+                updateTaskVisual(true)
+
                 local _, toggleError = apiCall(profile, "/api/v1/tasks/" .. taskItem.id .. "/complete", "POST", {
                     completed = nextCompleted,
                 })
+
                 if toggleError then
-                    showTasks(profile, "Could not update: " .. toggleError)
+                    taskItem.my_completed = previousCompleted
+                    taskButton.Text = "×  Could not update"
+                    taskButton:SetAttribute("BaseColor", COLORS.badSoft)
+                    TweenService:Create(taskButton, TweenInfo.new(0.14), {
+                        BackgroundColor3 = COLORS.badSoft,
+                        TextColor3 = COLORS.bad,
+                    }):Play()
+
+                    task.delay(0.8, function()
+                        if taskButton.Parent then
+                            updateTaskVisual(true)
+                            taskButton.Active = true
+                            taskBusy = false
+                        end
+                    end)
                     return
                 end
-                taskItem.my_completed = nextCompleted
-                updateTaskVisual()
-                task.delay(0.12, function() showTasks(profile) end)
+
+                taskButton.Active = true
+                taskBusy = false
             end)
         end
     end
@@ -756,7 +794,7 @@ showDocs = function(profile, message)
     clear()
     header("Project docs")
     if message then banner(message, "error") end
-    intro(profile.name or "Project", "Project docs", "Read and follow linked project documentation.")
+    intro(profile.name or "Project", "Project docs", "Read project documentations.")
 
     local projectDocs, err = apiCall(profile, "/api/v1/documents", "GET")
     if not projectDocs then
@@ -799,9 +837,16 @@ showProjects = function(message, isError)
     end
 
     for index, profile in ipairs(profiles) do
-        local profileCard = card()
-        label(profile.name or "Project", 25, COLORS.text, 14, true, profileCard)
-        local startButton = button("Start session", COLORS.accent, COLORS.white, 40, profileCard)
+        local profileCard = card(nil, 12, 0)
+        local projectRow = actionRow(profileCard, 40)
+
+        local projectName = label(profile.name or "Project", 40, COLORS.text, 14, true, projectRow)
+        projectName.Size = UDim2.new(0.62, -4, 1, 0)
+        projectName.TextWrapped = false
+        projectName.TextTruncate = Enum.TextTruncate.AtEnd
+
+        local startButton = button("Start session", COLORS.accent, COLORS.white, 40, projectRow)
+        startButton.Size = UDim2.new(0.38, -3, 1, 0)
         startButton.MouseButton1Click:Connect(function()
             startButton.Text = "Connecting..."
             local data, err = apiCall(profile, "/api/v1/events/session/start", "POST")
