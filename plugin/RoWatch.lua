@@ -4,40 +4,28 @@ local TweenService = game:GetService("TweenService")
 local StudioService = game:GetService("StudioService")
 local Players = game:GetService("Players")
 
-local ROWATCH_URL = " https://essence-valley-glimpse.ngrok-free.dev/"
+local ROWATCH_URL = "https://essence-valley-glimpse.ngrok-free.dev"
 
 local THEMES = {
     light = {
-        bg = Color3.fromRGB(244, 247, 251),
-        panel = Color3.fromRGB(255, 255, 255),
-        panelAlt = Color3.fromRGB(237, 243, 250),
-        text = Color3.fromRGB(19, 28, 42),
-        muted = Color3.fromRGB(96, 111, 132),
-        border = Color3.fromRGB(211, 221, 234),
-        accent = Color3.fromRGB(37, 99, 235),
-        accentHover = Color3.fromRGB(29, 78, 216),
-        accentSoft = Color3.fromRGB(229, 238, 255),
-        good = Color3.fromRGB(22, 163, 100),
-        goodSoft = Color3.fromRGB(226, 247, 237),
-        bad = Color3.fromRGB(220, 61, 61),
-        badSoft = Color3.fromRGB(254, 235, 235),
-        white = Color3.fromRGB(255, 255, 255),
+        bg = Color3.fromRGB(244, 246, 248), panel = Color3.fromRGB(255, 255, 255),
+        panelAlt = Color3.fromRGB(237, 240, 243), text = Color3.fromRGB(29, 33, 38),
+        muted = Color3.fromRGB(101, 111, 122), border = Color3.fromRGB(211, 216, 222),
+        accent = Color3.fromRGB(59, 130, 246), accentHover = Color3.fromRGB(91, 152, 248),
+        accentSoft = Color3.fromRGB(229, 239, 255), good = Color3.fromRGB(45, 154, 101),
+        goodSoft = Color3.fromRGB(226, 244, 235), bad = Color3.fromRGB(202, 75, 75),
+        badSoft = Color3.fromRGB(250, 231, 231), white = Color3.fromRGB(255, 255, 255),
+        titlebar = Color3.fromRGB(232, 235, 239), input = Color3.fromRGB(248, 249, 250),
     },
     dark = {
-        bg = Color3.fromRGB(15, 20, 29),
-        panel = Color3.fromRGB(24, 31, 43),
-        panelAlt = Color3.fromRGB(31, 41, 56),
-        text = Color3.fromRGB(238, 243, 250),
-        muted = Color3.fromRGB(151, 164, 184),
-        border = Color3.fromRGB(52, 64, 82),
-        accent = Color3.fromRGB(79, 140, 255),
-        accentHover = Color3.fromRGB(105, 159, 255),
-        accentSoft = Color3.fromRGB(31, 54, 91),
-        good = Color3.fromRGB(62, 207, 142),
-        goodSoft = Color3.fromRGB(24, 66, 54),
-        bad = Color3.fromRGB(255, 112, 112),
-        badSoft = Color3.fromRGB(76, 38, 43),
-        white = Color3.fromRGB(255, 255, 255),
+        bg = Color3.fromRGB(32, 35, 39), panel = Color3.fromRGB(42, 46, 51),
+        panelAlt = Color3.fromRGB(49, 54, 60), text = Color3.fromRGB(242, 244, 247),
+        muted = Color3.fromRGB(155, 166, 178), border = Color3.fromRGB(66, 73, 82),
+        accent = Color3.fromRGB(59, 130, 246), accentHover = Color3.fromRGB(91, 152, 248),
+        accentSoft = Color3.fromRGB(39, 58, 85), good = Color3.fromRGB(88, 195, 140),
+        goodSoft = Color3.fromRGB(35, 68, 54), bad = Color3.fromRGB(230, 106, 106),
+        badSoft = Color3.fromRGB(58, 43, 43), white = Color3.fromRGB(255, 255, 255),
+        titlebar = Color3.fromRGB(27, 30, 34), input = Color3.fromRGB(34, 38, 43),
     },
 }
 
@@ -60,26 +48,101 @@ root.BackgroundColor3 = COLORS.bg
 root.BorderSizePixel = 0
 root.Parent = widget
 
+local titlebar = Instance.new("Frame")
+titlebar.Size = UDim2.new(1, 0, 0, 38)
+titlebar.BackgroundColor3 = COLORS.titlebar
+titlebar.BorderSizePixel = 0
+titlebar.Parent = root
+
+local titleLine = Instance.new("Frame")
+titleLine.Size = UDim2.new(1, 0, 0, 1)
+titleLine.Position = UDim2.new(0, 0, 1, -1)
+titleLine.BackgroundColor3 = COLORS.border
+titleLine.BorderSizePixel = 0
+titleLine.Parent = titlebar
+
+local titleMark = Instance.new("TextLabel")
+titleMark.Size = UDim2.fromOffset(22, 22)
+titleMark.Position = UDim2.fromOffset(11, 8)
+titleMark.BackgroundColor3 = COLORS.accent
+titleMark.BorderSizePixel = 0
+titleMark.Text = "R"
+titleMark.TextColor3 = COLORS.white
+titleMark.Font = Enum.Font.GothamBold
+titleMark.TextSize = 11
+titleMark.Parent = titlebar
+local titleMarkCorner = Instance.new("UICorner")
+titleMarkCorner.CornerRadius = UDim.new(0, 6)
+titleMarkCorner.Parent = titleMark
+
+local titleBrand = Instance.new("TextLabel")
+titleBrand.Size = UDim2.new(0, 82, 1, 0)
+titleBrand.Position = UDim2.fromOffset(41, 0)
+titleBrand.BackgroundTransparency = 1
+titleBrand.Text = "RoWatch"
+titleBrand.TextColor3 = COLORS.text
+titleBrand.TextXAlignment = Enum.TextXAlignment.Left
+titleBrand.Font = Enum.Font.GothamBold
+titleBrand.TextSize = 12
+titleBrand.Parent = titlebar
+
+local titleContext = Instance.new("TextLabel")
+titleContext.Size = UDim2.new(1, -224, 1, 0)
+titleContext.Position = UDim2.fromOffset(118, 0)
+titleContext.BackgroundTransparency = 1
+titleContext.Text = "Studio companion"
+titleContext.TextColor3 = COLORS.muted
+titleContext.TextXAlignment = Enum.TextXAlignment.Left
+titleContext.TextTruncate = Enum.TextTruncate.AtEnd
+titleContext.Font = Enum.Font.Gotham
+titleContext.TextSize = 9
+titleContext.Parent = titlebar
+
+local homeButton = Instance.new("TextButton")
+homeButton.Size = UDim2.fromOffset(28, 28)
+homeButton.AnchorPoint = Vector2.new(1, 0)
+homeButton.Position = UDim2.new(1, -43, 0, 5)
+homeButton.BackgroundTransparency = 1
+homeButton.BorderSizePixel = 0
+homeButton.Text = "⌂"
+homeButton.TextColor3 = COLORS.muted
+homeButton.Font = Enum.Font.GothamBold
+homeButton.TextSize = 16
+homeButton.Parent = titlebar
+
+local settingsButton = Instance.new("TextButton")
+settingsButton.Size = UDim2.fromOffset(28, 28)
+settingsButton.AnchorPoint = Vector2.new(1, 0)
+settingsButton.Position = UDim2.new(1, -9, 0, 5)
+settingsButton.BackgroundTransparency = 1
+settingsButton.BorderSizePixel = 0
+settingsButton.Text = "⚙"
+settingsButton.TextColor3 = COLORS.muted
+settingsButton.Font = Enum.Font.GothamBold
+settingsButton.TextSize = 15
+settingsButton.Parent = titlebar
+
 local scroller = Instance.new("ScrollingFrame")
-scroller.Size = UDim2.fromScale(1, 1)
+scroller.Size = UDim2.new(1, 0, 1, -38)
+scroller.Position = UDim2.fromOffset(0, 38)
 scroller.BackgroundTransparency = 1
 scroller.BorderSizePixel = 0
-scroller.ScrollBarThickness = 4
+scroller.ScrollBarThickness = 3
 scroller.ScrollBarImageColor3 = COLORS.accent
 scroller.AutomaticCanvasSize = Enum.AutomaticSize.Y
 scroller.CanvasSize = UDim2.new()
 scroller.Parent = root
 
 local layout = Instance.new("UIListLayout")
-layout.Padding = UDim.new(0, 9)
+layout.Padding = UDim.new(0, 10)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Parent = scroller
 
 local padding = Instance.new("UIPadding")
-padding.PaddingTop = UDim.new(0, 14)
-padding.PaddingBottom = UDim.new(0, 14)
-padding.PaddingLeft = UDim.new(0, 14)
-padding.PaddingRight = UDim.new(0, 14)
+padding.PaddingTop = UDim.new(0, 12)
+padding.PaddingBottom = UDim.new(0, 12)
+padding.PaddingLeft = UDim.new(0, 12)
+padding.PaddingRight = UDim.new(0, 12)
 padding.Parent = scroller
 
 local profiles = plugin:GetSetting("rw_projects") or {}
@@ -98,6 +161,7 @@ local showProjects
 local showActive
 local showTasks
 local showAuth
+local showSettings
 local redraw
 
 local function saveProfiles()
@@ -166,7 +230,7 @@ local function card(parent, paddingSize, gap)
     node.BorderSizePixel = 0
     node.LayoutOrder = nextOrder()
     node.Parent = parent or scroller
-    round(node, 9)
+    round(node, 10)
     stroke(node)
     addPadding(node, paddingSize or 13, paddingSize or 13)
     local cardLayout = Instance.new("UIListLayout")
@@ -188,7 +252,7 @@ local function button(text, color, textColor, height, parent)
     node.BorderSizePixel = 0
     node.LayoutOrder = nextOrder()
     node.Parent = parent or scroller
-    round(node, 7)
+    round(node, 8)
     stroke(node, color == COLORS.accent and COLORS.accent or COLORS.border)
 
     local scale = Instance.new("UIScale")
@@ -215,7 +279,7 @@ end
 local function input(placeholder, value, secret, parent)
     local node = Instance.new("TextBox")
     node.Size = UDim2.new(1, 0, 0, 40)
-    node.BackgroundColor3 = COLORS.panelAlt
+    node.BackgroundColor3 = COLORS.input
     node.TextColor3 = COLORS.text
     node.PlaceholderColor3 = COLORS.muted
     node.PlaceholderText = placeholder
@@ -228,7 +292,7 @@ local function input(placeholder, value, secret, parent)
     node.LayoutOrder = nextOrder()
     node.Parent = parent or scroller
     if secret then node.TextEditable = true end
-    round(node, 7)
+    round(node, 8)
     local inputStroke = stroke(node)
     addPadding(node, 11, 0)
     node.Focused:Connect(function()
@@ -264,75 +328,27 @@ local function banner(text, kind)
     return node
 end
 
+local function intro(eyebrow, title, description)
+    label(string.upper(eyebrow or "ROWATCH"), 16, COLORS.muted, 9, true)
+    label(title, 26, COLORS.text, 18, true)
+    if description and description ~= "" then
+        label(description, 40, COLORS.muted, 10, false)
+    end
+end
+
 local function header(subtitle)
     root.BackgroundColor3 = COLORS.bg
     scroller.ScrollBarImageColor3 = COLORS.accent
-
-    local shell = Instance.new("Frame")
-    shell.Size = UDim2.new(1, 0, 0, 68)
-    shell.BackgroundColor3 = COLORS.panel
-    shell.BorderSizePixel = 0
-    shell.LayoutOrder = nextOrder()
-    shell.Parent = scroller
-    round(shell, 10)
-    stroke(shell)
-
-    local mark = Instance.new("TextLabel")
-    mark.Size = UDim2.fromOffset(36, 36)
-    mark.Position = UDim2.fromOffset(12, 10)
-    mark.BackgroundColor3 = COLORS.accent
-    mark.Text = "R"
-    mark.TextColor3 = COLORS.white
-    mark.Font = Enum.Font.GothamBold
-    mark.TextSize = 18
-    mark.BorderSizePixel = 0
-    mark.Parent = shell
-    round(mark, 9)
-
-    local brand = Instance.new("TextLabel")
-    brand.Size = UDim2.new(1, -104, 0, 24)
-    brand.Position = UDim2.fromOffset(58, 8)
-    brand.BackgroundTransparency = 1
-    brand.Text = "RoWatch"
-    brand.TextColor3 = COLORS.text
-    brand.TextXAlignment = Enum.TextXAlignment.Left
-    brand.Font = Enum.Font.GothamBold
-    brand.TextSize = 16
-    brand.Parent = shell
-
-    local sub = Instance.new("TextLabel")
-    sub.Size = UDim2.new(1, -104, 0, 20)
-    sub.Position = UDim2.fromOffset(58, 33)
-    sub.BackgroundTransparency = 1
-    sub.Text = subtitle
-    sub.TextColor3 = COLORS.muted
-    sub.TextXAlignment = Enum.TextXAlignment.Left
-    sub.TextTruncate = Enum.TextTruncate.AtEnd
-    sub.Font = Enum.Font.Gotham
-    sub.TextSize = 10
-    sub.Parent = shell
-
-    local themeToggle = Instance.new("TextButton")
-    themeToggle.Size = UDim2.fromOffset(36, 36)
-    themeToggle.AnchorPoint = Vector2.new(1, 0)
-    themeToggle.Position = UDim2.new(1, -12, 0, 10)
-    themeToggle.BackgroundColor3 = COLORS.panelAlt
-    themeToggle.Text = themeName == "dark" and "SUN" or "MOON"
-    themeToggle.TextColor3 = COLORS.accent
-    themeToggle.Font = Enum.Font.GothamBold
-    themeToggle.TextSize = 8
-    themeToggle.AutoButtonColor = false
-    themeToggle.BorderSizePixel = 0
-    themeToggle.Parent = shell
-    round(themeToggle, 8)
-    themeToggle.MouseButton1Click:Connect(function()
-        themeName = themeName == "dark" and "light" or "dark"
-        COLORS = THEMES[themeName]
-        plugin:SetSetting("rw_theme", themeName)
-        if redraw then redraw() end
-    end)
+    titlebar.BackgroundColor3 = COLORS.titlebar
+    titleLine.BackgroundColor3 = COLORS.border
+    titleMark.BackgroundColor3 = COLORS.accent
+    titleMark.TextColor3 = COLORS.white
+    titleBrand.TextColor3 = COLORS.text
+    titleContext.Text = subtitle or "Studio companion"
+    titleContext.TextColor3 = COLORS.muted
+    homeButton.TextColor3 = COLORS.muted
+    settingsButton.TextColor3 = COLORS.muted
 end
-
 
 local function requestApi(endpoint, method, body, headers)
     local ok, response = pcall(function()
@@ -570,12 +586,12 @@ end)
 showAuth = function(message)
     redraw = function() showAuth() end
     clear()
-    header("Connect account")
+    header("Connect")
     if message then banner(message, "error") end
+    intro("Studio companion", "Connect RoWatch", "Paste your RoWatch account API key to load the projects you can access.")
 
-    local keyCard = card()
-    label("Account API key", 27, COLORS.text, 15, true, keyCard)
-    label("Open Account on the RoWatch website, copy your API key, and paste it here. The key identifies your account securely.", 54, COLORS.muted, 10, false, keyCard)
+    local keyCard = card(nil, 12, 9)
+    label("ACCOUNT API KEY", 18, COLORS.muted, 9, true, keyCard)
     local keyBox = input("Paste 64-character API key", "", true, keyCard)
     local connectButton = button("Connect and fetch projects", COLORS.accent, COLORS.white, 42, keyCard)
     connectButton.MouseButton1Click:Connect(function()
@@ -593,19 +609,49 @@ showAuth = function(message)
         saveAccountConnection(rawKey, data)
         showProjects("Connected as @" .. pluginUsername)
     end)
-    label("Regenerating the key on the website signs this Studio plugin out immediately.", 34, COLORS.muted, 9, false, keyCard)
+    label("Development activity is recorded only after you explicitly start a session.", 34, COLORS.muted, 9, false)
 end
 
+
+showSettings = function(message)
+    redraw = function() showSettings() end
+    clear()
+    header("Account")
+    if message then banner(message, "error") end
+    intro("RoWatch account", "Plugin settings", "Only settings that matter inside Studio.")
+
+    local accountCard = card(nil, 12, 9)
+    label("CONNECTED ACCOUNT", 18, COLORS.muted, 9, true, accountCard)
+    label(pluginUsername ~= "" and ("@" .. pluginUsername) or "Not connected", 24, COLORS.text, 13, true, accountCard)
+    local themeButton = button(themeName == "dark" and "Use light theme" or "Use dark theme", COLORS.panelAlt, COLORS.text, 36, accountCard)
+    themeButton.MouseButton1Click:Connect(function()
+        themeName = themeName == "dark" and "light" or "dark"
+        COLORS = THEMES[themeName]
+        plugin:SetSetting("rw_theme", themeName)
+        showSettings()
+    end)
+    if accountApiKey ~= "" and not sessionId then
+        local disconnect = button("Disconnect account", COLORS.badSoft, COLORS.bad, 36, accountCard)
+        disconnect.MouseButton1Click:Connect(function()
+            accountApiKey = ""
+            pluginUsername = ""
+            profiles = {}
+            plugin:SetSetting("rw_account_api_key", "")
+            plugin:SetSetting("rw_account_username", "")
+            plugin:SetSetting("rw_projects", profiles)
+            showAuth()
+        end)
+    elseif sessionId then
+        label("End the active session before disconnecting this account.", 30, COLORS.muted, 9, false, accountCard)
+    end
+end
 
 showTasks = function(profile, message)
     redraw = function() showTasks(profile) end
     clear()
-    header((profile.name or "Project") .. " / My tasks")
+    header("My tasks")
     if message then banner(message, message:find("Could not") and "error" or "success") end
-
-    local intro = card()
-    label("Assigned to you", 24, COLORS.text, 14, true, intro)
-    label("Only tasks assigned to @" .. pluginUsername .. " appear here. Select a task to change your completion status.", 38, COLORS.muted, 10, false, intro)
+    intro(profile.name or "Project", "My tasks", "Only tasks assigned to @" .. pluginUsername .. " appear here.")
 
     local tasks, err = apiCall(profile, "/api/v1/tasks", "GET")
     if not tasks then
@@ -659,7 +705,7 @@ showTasks = function(profile, message)
         end
     end
 
-    local back = button(sessionId and "Back to live session" or "Back to projects", COLORS.panel, COLORS.text, 38)
+    local back = button(sessionId and "<  Back to live session" or "<  Back to projects", COLORS.panel, COLORS.muted, 36)
     back.MouseButton1Click:Connect(function()
         if sessionId then showActive() else showProjects() end
     end)
@@ -670,10 +716,7 @@ showProjects = function(message, isError)
     clear()
     header("Projects")
     if message then banner(message, isError and "error" or "success") end
-
-    local intro = card()
-    label("Start tracking", 25, COLORS.text, 15, true, intro)
-    label("Choose a project fetched from your RoWatch account.", 26, COLORS.muted, 10, false, intro)
+    intro("Connected as @" .. (pluginUsername ~= "" and pluginUsername or "account"), "Your projects", "Choose where you are working, then start a session.")
 
     if #profiles == 0 then
         local empty = card()
@@ -684,7 +727,7 @@ showProjects = function(message, isError)
     for index, profile in ipairs(profiles) do
         local profileCard = card()
         label(profile.name or "Project", 25, COLORS.text, 14, true, profileCard)
-        label("@" .. pluginUsername .. "  /  Ready to connect", 18, COLORS.muted, 10, false, profileCard)
+        label("Ready to track  /  " .. (profile.role or "member"), 18, COLORS.muted, 10, false, profileCard)
 
         local startButton = button("Start session", COLORS.accent, COLORS.white, 40, profileCard)
         startButton.MouseButton1Click:Connect(function()
@@ -703,11 +746,11 @@ showProjects = function(message, isError)
             end
         end)
 
-        local tasksButton = button("My assigned tasks", COLORS.panelAlt, COLORS.accent, 34, profileCard)
+        local tasksButton = button("My tasks", COLORS.panelAlt, COLORS.text, 34, profileCard)
         tasksButton.MouseButton1Click:Connect(function() showTasks(profile) end)
     end
 
-    local refresh = button("Refresh project memberships", COLORS.panel, COLORS.accent, 40)
+    local refresh = button("Refresh projects", COLORS.panelAlt, COLORS.text, 38)
     refresh.MouseButton1Click:Connect(function()
         local data, err = fetchAccountProjects(accountApiKey)
         if not data then
@@ -720,8 +763,10 @@ showProjects = function(message, isError)
     local signOut = button("Disconnect account", COLORS.panel, COLORS.bad, 36)
     signOut.MouseButton1Click:Connect(function()
         accountApiKey = ""
+        pluginUsername = ""
         profiles = {}
         plugin:SetSetting("rw_account_api_key", "")
+        plugin:SetSetting("rw_account_username", "")
         plugin:SetSetting("rw_projects", profiles)
         showAuth()
     end)
@@ -733,19 +778,14 @@ end
 showActive = function()
     redraw = function() showActive() end
     clear()
-    header(activeProfile.name or "Live session")
+    header("Live session")
 
-    local liveCard = card(nil, 16, 8)
-    local live = label("LIVE  /  TRACKING", 22, COLORS.good, 11, true, liveCard)
-    live.BackgroundColor3 = COLORS.goodSoft
-    live.BackgroundTransparency = 0
-    round(live, 6)
-    addPadding(live, 9, 0)
-    label(activeProfile.name or "Active project", 28, COLORS.text, 16, true, liveCard)
-    label("@" .. pluginUsername, 18, COLORS.muted, 10, false, liveCard)
-    local timer = label("00h 00m 00s", 56, COLORS.text, 27, true, liveCard)
-    timer.TextXAlignment = Enum.TextXAlignment.Center
-    label("Scripts, parts, and UI additions/removals are being tracked.", 34, COLORS.muted, 10, false, liveCard)
+    local liveCard = card(nil, 14, 8)
+    label("●  LIVE SESSION", 20, COLORS.good, 10, true, liveCard)
+    label(activeProfile.name or "Active project", 27, COLORS.text, 16, true, liveCard)
+    local timer = label("00:00:00", 54, COLORS.text, 34, true, liveCard)
+    timer.TextXAlignment = Enum.TextXAlignment.Left
+    label("Tracking script activity, code-change counts, parts, and UI changes for this session.", 42, COLORS.muted, 10, false, liveCard)
 
     local tasksButton = button("View my assigned tasks", COLORS.panel, COLORS.accent, 38)
     tasksButton.MouseButton1Click:Connect(function() showTasks(activeProfile) end)
@@ -766,7 +806,7 @@ showActive = function()
     task.spawn(function()
         while sessionId and timer.Parent do
             local seconds = os.time() - (sessionStart or os.time())
-            timer.Text = string.format("%02dh  %02dm  %02ds",
+            timer.Text = string.format("%02d:%02d:%02d",
                 math.floor(seconds / 3600),
                 math.floor((seconds % 3600) / 60),
                 seconds % 60
@@ -806,6 +846,29 @@ pcall(function()
         finishDocumentTracking(document)
     end)
 end)
+
+homeButton.MouseButton1Click:Connect(function()
+    if accountApiKey == "" then showAuth()
+    elseif sessionId then showActive()
+    else showProjects() end
+end)
+
+settingsButton.MouseButton1Click:Connect(function()
+    showSettings()
+end)
+
+for _, navButton in ipairs({homeButton, settingsButton}) do
+    navButton.MouseEnter:Connect(function()
+        navButton.BackgroundTransparency = 0
+        navButton.BackgroundColor3 = COLORS.panel
+        navButton.TextColor3 = COLORS.text
+    end)
+    navButton.MouseLeave:Connect(function()
+        navButton.BackgroundTransparency = 1
+        navButton.TextColor3 = COLORS.muted
+    end)
+    round(navButton, 7)
+end
 
 toolbarButton.Click:Connect(function()
     widget.Enabled = not widget.Enabled

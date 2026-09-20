@@ -61,3 +61,17 @@ def test_plugin_core_tracking_and_multi_project_behavior_remain_connected():
     assert 'X-Username' not in lua
     assert 'X-Project-Key' not in lua
     assert "instance:IsDescendantOf(StarterGui) or instance:IsDescendantOf(Workspace)" in lua
+
+
+def test_plugin_matches_compact_studio_reference_shell():
+    lua = source()
+    assert 'titlebar.Size = UDim2.new(1, 0, 0, 38)' in lua
+    assert 'scroller.Position = UDim2.fromOffset(0, 38)' in lua
+    assert 'bg = Color3.fromRGB(32, 35, 39)' in lua
+    assert 'panel = Color3.fromRGB(42, 46, 51)' in lua
+    assert 'accent = Color3.fromRGB(59, 130, 246)' in lua
+    assert 'intro("Studio companion", "Connect RoWatch"' in lua
+    assert '"Your projects"' in lua
+    assert 'label("●  LIVE SESSION"' in lua
+    assert 'local timer = label("00:00:00"' in lua
+    assert 'showSettings = function' in lua
