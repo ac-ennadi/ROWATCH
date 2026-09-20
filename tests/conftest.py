@@ -37,6 +37,7 @@ def register(client, username, email=None):
         "username": username,
         "email": email or f"{username.lower()}@example.test",
         "password": "secret123",
+        "tracking_consent": True,
     })
 
 

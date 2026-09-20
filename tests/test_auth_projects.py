@@ -45,3 +45,32 @@ def test_account_plan_lists_all_three_options(registered_client):
     data = registered_client.get("/payments/account").get_json()
     assert data["plan"] == "free"
     assert set(data["plans"]) == {"free", "pro", "studio"}
+
+
+def test_registration_requires_explicit_tracking_consent(client):
+    payload = {
+        "username": "NoConsent",
+        "email": "no-consent@example.test",
+        "password": "secret123",
+    }
+    missing = client.post("/auth/register", json=payload)
+    assert missing.status_code == 400
+    assert missing.get_json()["consent_required"] is True
+
+    declined = client.post("/auth/register", json={**payload, "tracking_consent": False})
+    assert declined.status_code == 400
+    assert declined.get_json()["consent_required"] is True
+
+
+def test_registration_records_versioned_tracking_consent(app, client):
+    response = register(client, "Consented")
+    assert response.status_code == 201
+    me = client.get("/auth/me").get_json()
+    assert me["tracking_consent_at"] is not None
+    assert me["tracking_consent_version"] == "2026-08-25"
+
+    with app.app_context():
+        from models import User
+        user = User.query.filter_by(username="Consented").one()
+        assert user.tracking_consent_at is not None
+        assert user.tracking_consent_version == "2026-08-25"

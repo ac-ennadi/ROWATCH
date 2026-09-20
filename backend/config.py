@@ -8,6 +8,7 @@ class Config:
     JWT_SECRET          = os.environ.get("JWT_SECRET", "rowatch-jwt-secret-change-in-prod")
     SESSION_DAYS        = int(os.environ.get("ROWATCH_SESSION_DAYS", "7"))
     JWT_EXPIRY          = timedelta(days=SESSION_DAYS)
+    TRACKING_CONSENT_VERSION = os.environ.get("ROWATCH_TRACKING_CONSENT_VERSION", "2026-08-25")
 
 PLAN_PRICES = {
     "pro":    {"monthly": 5.99,  "yearly": 49.99},

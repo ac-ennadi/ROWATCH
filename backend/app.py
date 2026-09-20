@@ -5,6 +5,7 @@ import time
 
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
+from sqlalchemy import inspect, text
 
 from config import Config
 from models import db
@@ -42,6 +43,7 @@ def create_app(test_config=None):
         app.register_blueprint(workspace_bp)
         app.register_blueprint(plugin_tasks_bp)
         db.create_all()
+        ensure_tracking_consent_columns()
         migrate_legacy_project_plans()
         bootstrap_admin_account()
 
@@ -60,6 +62,16 @@ def create_app(test_config=None):
 
     return app
 
+
+
+def ensure_tracking_consent_columns():
+    """Add consent audit fields to databases created before consent tracking."""
+    columns = {column["name"] for column in inspect(db.engine).get_columns("users")}
+    if "tracking_consent_at" not in columns:
+        db.session.execute(text("ALTER TABLE users ADD COLUMN tracking_consent_at DATETIME"))
+    if "tracking_consent_version" not in columns:
+        db.session.execute(text("ALTER TABLE users ADD COLUMN tracking_consent_version VARCHAR(32)"))
+    db.session.commit()
 
 def bootstrap_admin_account():
     """Create or synchronize the admin account from environment variables."""

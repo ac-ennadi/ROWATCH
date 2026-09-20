@@ -21,3 +21,12 @@ def test_official_plugin_download_is_available_in_public_and_dashboard_ui(client
     assert url in app_js
     assert b'target="_blank"' in landing
     assert b'rel="noopener noreferrer"' in landing
+
+
+def test_registration_discloses_and_requires_tracking_consent(client):
+    html = client.get("/").data
+    javascript = client.get("/app.js").data
+    assert b'id="regTrackingConsent"' in html
+    assert b'type="checkbox" required' in html
+    assert b"Tracking stops when the session ends" in html
+    assert b"tracking_consent: el('regTrackingConsent').checked" in javascript

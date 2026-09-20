@@ -248,6 +248,7 @@
         username: el('regUser').value.trim(),
         email: el('regEmail').value.trim(),
         password: el('regPw').value,
+        tracking_consent: el('regTrackingConsent').checked,
       }),
     });
     if (!result.ok) return error.textContent = result.data.error || 'Registration failed.';

@@ -59,6 +59,7 @@ def register():
     username = (data.get("username") or "").strip()
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
+    tracking_consent = data.get("tracking_consent") is True
     if not username or not email or not password:
         return jsonify({"error": "All fields are required"}), 400
     if len(username) < 3:
@@ -67,11 +68,19 @@ def register():
         return jsonify({"error": "Enter a valid email address"}), 400
     if len(password) < 8:
         return jsonify({"error": "Password must be at least 8 characters"}), 400
+    if not tracking_consent:
+        return jsonify({"error": "You must consent to Studio activity tracking to create an account", "consent_required": True}), 400
     if User.query.filter_by(username=username).first():
         return jsonify({"error": "Username is already taken"}), 409
     if User.query.filter_by(email=email).first():
         return jsonify({"error": "Email is already registered"}), 409
-    user = User(username=username, email=email, password_hash=generate_password_hash(password))
+    user = User(
+        username=username,
+        email=email,
+        password_hash=generate_password_hash(password),
+        tracking_consent_at=datetime.utcnow(),
+        tracking_consent_version=current_app.config["TRACKING_CONSENT_VERSION"],
+    )
     db.session.add(user)
     db.session.commit()
     return _session_response({
@@ -115,6 +124,8 @@ def me():
         "plan_expires_at": g.user.account_plan_expires_at.isoformat() if g.user.account_plan_expires_at else None,
         "created_at": g.user.created_at.isoformat(),
         "session_days": current_app.config["SESSION_DAYS"],
+        "tracking_consent_at": g.user.tracking_consent_at.isoformat() if g.user.tracking_consent_at else None,
+        "tracking_consent_version": g.user.tracking_consent_version,
     })
 
 

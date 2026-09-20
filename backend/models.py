@@ -18,6 +18,8 @@ class User(db.Model):
     email         = db.Column(db.String(128), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     is_admin      = db.Column(db.Boolean, default=False)
+    tracking_consent_at = db.Column(db.DateTime, nullable=True)
+    tracking_consent_version = db.Column(db.String(32), nullable=True)
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
 
     memberships   = db.relationship("ProjectMember", back_populates="user", cascade="all, delete")
