@@ -12,8 +12,9 @@ def project_to_dict(p, member=None):
     return {
         "id": p.id,
         "name": p.name,
-        "plan": p.plan,
-        "plan_expires_at": p.plan_expires_at.isoformat() if p.plan_expires_at else None,
+        "plan": p.effective_plan,
+        "plan_expires_at": p.owner.account_plan_expires_at.isoformat() if p.owner.account_plan_expires_at else None,
+        "plan_owner": p.owner.username,
         "created_at": p.created_at.isoformat(),
         "member_count": len(p.members),
         "role": member.role if member else None,
@@ -32,13 +33,7 @@ def list_projects():
 def create_project():
     owned_memberships = ProjectMember.query.filter_by(user_id=g.user.id, role="owner").all()
     owned = len(owned_memberships)
-    highest_plan = "free"
-    if any(m.project.plan == "studio" for m in owned_memberships):
-        highest_plan = "studio"
-    elif any(m.project.plan == "pro" for m in owned_memberships):
-        highest_plan = "pro"
-
-    limit = PLAN_LIMITS[highest_plan]["projects"]
+    limit = PLAN_LIMITS[g.user.account_plan]["projects"]
     if limit is not None and owned >= limit:
         return jsonify({"error": f"Your current plan is limited to {limit} owned project(s). Upgrade to create more."}), 403
 
@@ -122,7 +117,7 @@ def invite_member(project_id):
     current = ProjectMember.query.filter_by(project_id=project_id).count()
     limit = g.project.max_members
     if limit is not None and current >= limit:
-        return jsonify({"error": f"Member limit reached ({limit}). Upgrade the project plan."}), 403
+        return jsonify({"error": f"Member limit reached ({limit}). Ask the project owner to upgrade their account plan."}), 403
 
     db.session.add(ProjectMember(project_id=project_id, user_id=target.id, role="member"))
     db.session.commit()
@@ -145,7 +140,7 @@ def set_role(project_id, user_id):
         limit = g.project.max_co_admins
         current_admins = ProjectMember.query.filter_by(project_id=project_id, role="co_admin").count()
         if limit is not None and current_admins >= limit:
-            return jsonify({"error": f"Co-admin limit reached ({limit}). Upgrade the project plan."}), 403
+            return jsonify({"error": f"Co-admin limit reached ({limit}). Ask the project owner to upgrade their account plan."}), 403
 
     member.role = role
     db.session.commit()

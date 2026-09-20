@@ -41,6 +41,7 @@ def create_app(test_config=None):
         app.register_blueprint(workspace_bp)
         app.register_blueprint(plugin_tasks_bp)
         db.create_all()
+        migrate_legacy_project_plans()
 
     @app.get("/health")
     def health():
@@ -56,6 +57,37 @@ def create_app(test_config=None):
         return send_from_directory(FRONTEND_DIR, "index.html")
 
     return app
+
+
+def migrate_legacy_project_plans():
+    """Move the best active legacy project plan to its owner once."""
+    from datetime import datetime
+    from models import AccountSubscription, Project, User
+
+    now = datetime.utcnow()
+    rank = {"free": 0, "pro": 1, "studio": 2}
+    changed = False
+    for user in User.query.all():
+        if user.subscription:
+            continue
+        candidates = [project for project in Project.query.filter_by(owner_id=user.id).all()
+                      if project.plan in ("pro", "studio")
+                      and (not project.plan_expires_at or project.plan_expires_at > now)]
+        if not candidates:
+            continue
+        best = max(candidates, key=lambda project: rank[project.plan])
+        expiry_candidates = [project.plan_expires_at for project in candidates
+                             if project.plan == best.plan and project.plan_expires_at]
+        db.session.add(AccountSubscription(
+            user_id=user.id,
+            plan=best.plan,
+            expires_at=max(expiry_candidates) if expiry_candidates else None,
+            activated_by=best.plan_activated_by or "migration",
+            note="Migrated from project-level billing",
+        ))
+        changed = True
+    if changed:
+        db.session.commit()
 
 
 def start_purge_thread(app):

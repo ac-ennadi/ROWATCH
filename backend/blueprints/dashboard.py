@@ -107,7 +107,7 @@ def project_overview(project_id):
 
     return jsonify({
         "project":  g.project.name,
-        "plan":     g.project.plan,
+        "plan":     g.project.effective_plan,
         "members":  result,
     })
 

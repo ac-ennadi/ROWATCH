@@ -23,7 +23,7 @@ def _require_admin():
 
 
 def _feature_limit(feature):
-    return PLAN_LIMITS.get(g.project.plan, PLAN_LIMITS["free"])[feature]
+    return PLAN_LIMITS.get(g.project.effective_plan, PLAN_LIMITS["free"])[feature]
 
 
 def _limit_error(feature, current):
@@ -101,7 +101,7 @@ def list_tasks(project_id):
     tasks = Task.query.filter_by(project_id=project_id).order_by(Task.created_at.desc()).all()
     return jsonify({
         "items": [_task_dict(task, g.user.id) for task in tasks],
-        "usage": {"current": len(tasks), "limit": _feature_limit("tasks"), "plan": g.project.plan},
+        "usage": {"current": len(tasks), "limit": _feature_limit("tasks"), "plan": g.project.effective_plan},
     })
 
 
@@ -230,7 +230,7 @@ def list_documents(project_id):
     documents = ProjectDocument.query.filter_by(project_id=project_id).order_by(ProjectDocument.updated_at.desc()).all()
     return jsonify({
         "items": [_document_dict(document) for document in documents],
-        "usage": {"current": len(documents), "limit": _feature_limit("documents"), "plan": g.project.plan},
+        "usage": {"current": len(documents), "limit": _feature_limit("documents"), "plan": g.project.effective_plan},
     })
 
 

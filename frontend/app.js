@@ -279,7 +279,7 @@
     }
     target.innerHTML = data.map(p => `
       <article class="project-card" tabindex="0" data-project-id="${esc(p.id)}" aria-label="Open ${esc(p.name)}">
-        <div class="project-card-head"><h2>${esc(p.name)}</h2><span class="plan-tag">${esc(p.plan)}</span></div>
+        <div class="project-card-head"><h2>${esc(p.name)}</h2></div>
         <p class="muted">Open the project dashboard, Studio integration, analytics, and team controls.</p>
         <div class="project-card-meta"><span>${p.member_count} member${p.member_count === 1 ? '' : 's'}</span><span>${esc(roleName(p.role))}</span><span>Created ${esc(fmtDate(p.created_at, false))}</span></div>
       </article>`).join('');
@@ -324,7 +324,7 @@
   function syncProjectChrome() {
     if (!state.project) return;
     el('sidebarProjectName').textContent = state.project.name;
-    el('sidebarProjectPlan').textContent = `${state.project.plan[0].toUpperCase() + state.project.plan.slice(1)} plan · ${roleName(state.project.role)}`;
+    el('sidebarProjectPlan').textContent = roleName(state.project.role);
     $$('.admin-only').forEach(node => node.style.display = isAdmin() ? '' : 'none');
     syncUserUI();
     applyTheme(localStorage.getItem('rowatch-theme') || 'light');
@@ -674,14 +674,12 @@
     content.innerHTML = `
       <div class="settings-stack">
         <section class="settings-row"><h2>Project details</h2><p>${isOwner() ? 'Rename the project. Changes are visible to every member.' : 'Only the project owner can rename this project.'}</p><div class="key-line"><input id="projectNameInput" value="${esc(p.name)}" ${isOwner() ? '' : 'readonly'}/>${isOwner() ? '<button id="saveProjectName" class="btn btn-primary" type="button">Save</button>' : ''}</div></section>
-        <section class="settings-row"><h2>Current plan</h2><p>${p.plan_expires_at ? `Expires ${esc(fmtDate(p.plan_expires_at,false))}.` : 'No paid-plan expiry is currently set.'}</p><div class="key-line"><input readonly value="${esc(p.plan.toUpperCase())}"/><button id="upgradeProject" class="btn btn-secondary" type="button">View upgrades</button></div></section>
         <section class="settings-row"><h2>Project key</h2><p>${isOwner() ? 'Regenerating the key disconnects existing Studio plugin configurations until they use the new key.' : 'Only the owner can regenerate the key.'}</p><div class="key-line"><input readonly id="settingsProjectKey" value="${esc(p.project_key || 'Hidden')}"/>${isOwner() ? '<button id="regenProjectKey" class="btn btn-secondary" type="button">Regenerate</button>' : ''}</div></section>
         ${isOwner() ? '<section class="settings-row danger-zone"><h2>Delete project</h2><p>Permanently deletes this project, its memberships, sessions, and script events.</p><button id="deleteProject" class="btn btn-danger" type="button">Delete project</button></section>' : ''}
       </div>`;
     el('saveProjectName')?.addEventListener('click', saveProjectName);
     el('regenProjectKey')?.addEventListener('click', regenerateProjectKey);
     el('deleteProject')?.addEventListener('click', deleteProject);
-    el('upgradeProject')?.addEventListener('click', () => openCheckout(p.plan === 'pro' ? 'studio' : 'pro'));
   }
 
   async function saveProjectName() {
@@ -712,13 +710,32 @@
     await route('projects');
   }
 
+  function planChooserHtml() {
+    const current = state.user?.plan || 'free';
+    const expires = state.user?.plan_expires_at ? `Expires ${fmtDate(state.user.plan_expires_at,false)}` : (current === 'free' ? 'No expiry' : 'Active');
+    const plans = [
+      {id:'free',price:'$0',period:'forever',features:['1 owned project','5 members per project','10 tasks · 3 documents','7 days history']},
+      {id:'pro',price:'$5.99',period:'month',features:['3 owned projects','15 members per project','Unlimited tasks & documents','60 days history']},
+      {id:'studio',price:'$14.99',period:'month',features:['Unlimited projects','Unlimited members','Unlimited tasks & documents','Unlimited history']},
+    ];
+    return `<section class="account-plans"><div class="panel-card-head"><div><h2>Account plan</h2><p>Your plan applies to every project you own. Current: <strong>${esc(current.toUpperCase())}</strong> · ${esc(expires)}</p></div></div><div class="account-plan-grid">${plans.map(plan=>`<article class="account-plan-card ${current===plan.id?'current':''}"><div><h3>${plan.id[0].toUpperCase()+plan.id.slice(1)}</h3>${current===plan.id?'<span class="plan-tag">Current</span>':''}</div><p class="account-plan-price"><strong>${plan.price}</strong><span> / ${plan.period}</span></p><ul>${plan.features.map(feature=>`<li>${esc(feature)}</li>`).join('')}</ul><button class="btn ${current===plan.id?'btn-secondary':'btn-primary'} full" type="button" data-account-plan="${plan.id}" ${current===plan.id?'disabled':''}>${current===plan.id?'Current plan':`Choose ${plan.id[0].toUpperCase()+plan.id.slice(1)}`}</button></article>`).join('')}</div></section>`;
+  }
+
+  function wireAccountPlanButtons(root=document) {
+    $$('[data-account-plan]',root).forEach(button=>button.addEventListener('click',()=>{
+      button.closest('dialog')?.close();
+      openCheckout(button.dataset.accountPlan);
+    }));
+  }
+
   async function loadAccountPanel() {
     const content = el('panelContent');
     const result = await api('/auth/me');
     if (!result.ok) return renderError(content, result.data.error);
     state.user = result.data; syncUserUI();
-    content.innerHTML = `<div class="account-panel"><section class="panel-card"><div class="panel-card-head"><div><h2>Account details</h2><p>Your RoWatch username is also used by the Roblox Studio plugin.</p></div></div><div class="account-grid"><label>Username<input id="accountUsername" value="${esc(state.user.username)}"/></label><label>Email<input id="accountEmail" type="email" value="${esc(state.user.email)}"/></label></div><button id="saveAccount" class="btn btn-primary" type="button">Save account</button></section></div>`;
+    content.innerHTML = `<div class="account-panel"><section class="panel-card"><div class="panel-card-head"><div><h2>Account details</h2><p>Your RoWatch username is also used by the Roblox Studio plugin.</p></div></div><div class="account-grid"><label>Username<input id="accountUsername" value="${esc(state.user.username)}"/></label><label>Email<input id="accountEmail" type="email" value="${esc(state.user.email)}"/></label></div><button id="saveAccount" class="btn btn-primary" type="button">Save account</button></section>${planChooserHtml()}</div>`;
     el('saveAccount').addEventListener('click', saveAccountFromPanel);
+    wireAccountPlanButtons(content);
   }
 
   async function saveAccountFromPanel() {
@@ -734,15 +751,16 @@
     if (!dialog) {
       dialog = document.createElement('dialog');
       dialog.id = 'standaloneAccountDialog';
-      dialog.className = 'dialog';
+      dialog.className = 'dialog account-dialog';
       document.body.appendChild(dialog);
     }
     const result = await api('/auth/me');
     if (!result.ok) return toast(result.data.error || 'Could not load account.');
     state.user = result.data; syncUserUI();
-    dialog.innerHTML = `<form id="standaloneAccountForm"><div class="dialog-head"><div><h2>Account</h2><p>Your username is also used by the Roblox Studio plugin.</p></div><button type="button" class="dialog-x" data-standalone-close>×</button></div><label>Username<input id="standaloneUsername" value="${esc(state.user.username)}"/></label><label>Email<input id="standaloneEmail" type="email" value="${esc(state.user.email)}"/></label><p id="standaloneAccountError" class="form-error"></p><div class="dialog-actions"><button type="button" class="btn btn-secondary" id="standaloneLogout">Log out</button><button type="submit" class="btn btn-primary">Save</button></div></form>`;
+    dialog.innerHTML = `<form id="standaloneAccountForm"><div class="dialog-head"><div><h2>Account</h2><p>Your username and plan apply across RoWatch.</p></div><button type="button" class="dialog-x" data-standalone-close>×</button></div><label>Username<input id="standaloneUsername" value="${esc(state.user.username)}"/></label><label>Email<input id="standaloneEmail" type="email" value="${esc(state.user.email)}"/></label><p id="standaloneAccountError" class="form-error"></p><div class="dialog-actions"><button type="button" class="btn btn-secondary" id="standaloneLogout">Log out</button><button type="submit" class="btn btn-primary">Save</button></div></form>${planChooserHtml()}`;
     $('[data-standalone-close]',dialog).addEventListener('click',()=>dialog.close());
     el('standaloneLogout').addEventListener('click',()=>{dialog.close();logout();});
+    wireAccountPlanButtons(dialog);
     el('standaloneAccountForm').addEventListener('submit', async e => {
       e.preventDefault();
       const {ok,data} = await api('/auth/me',{method:'PATCH',body:JSON.stringify({username:el('standaloneUsername').value.trim(),email:el('standaloneEmail').value.trim()})});
@@ -755,13 +773,9 @@
   async function openCheckout(plan) {
     state.checkoutPlan = plan;
     if (!state.user) return route('register');
-    const projects = await api('/projects/');
-    if (!projects.ok) return toast(projects.data.error || 'Could not load projects.');
-    const owned = projects.data.filter(p => p.role === 'owner');
-    if (!owned.length) return toast('Create an owned project before upgrading.');
-    el('checkoutTitle').textContent = `Upgrade to ${plan[0].toUpperCase()+plan.slice(1)}`;
-    el('checkoutProject').innerHTML = owned.map(p => `<option value="${esc(p.id)}" ${state.project?.id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+    el('checkoutTitle').textContent = `Choose ${plan[0].toUpperCase()+plan.slice(1)} account plan`;
     el('checkoutError').textContent = '';
+    el('checkoutDuration').closest('label').style.display = plan === 'free' ? 'none' : '';
     el('checkoutDialog').showModal();
   }
 
@@ -769,12 +783,18 @@
     event.preventDefault();
     const error = el('checkoutError');
     error.textContent = '';
-    const {ok,data} = await api('/payments/checkout',{method:'POST',body:JSON.stringify({project_id:el('checkoutProject').value,plan:state.checkoutPlan,duration_months:Number(el('checkoutDuration').value),method:'dummy'})});
+    const {ok,data} = await api('/payments/checkout',{method:'POST',body:JSON.stringify({plan:state.checkoutPlan,duration_months:Number(el('checkoutDuration').value),method:'dummy'})});
     if(!ok) return error.textContent=data.error||'Checkout failed.';
-    el('checkoutDialog').close(); toast(`${state.checkoutPlan} plan activated`);
-    if(state.project?.id===el('checkoutProject').value){
-      const refreshed=await api(`/projects/${state.project.id}`);if(refreshed.ok){state.project=refreshed.data;syncProjectChrome();if(state.panel==='settings')loadSettings();}
+    el('checkoutDialog').close();
+    await checkAuth();
+    if(state.project){
+      const refreshed=await api(`/projects/${state.project.id}`);
+      if(refreshed.ok){state.project=refreshed.data;syncProjectChrome();}
+      if(state.panel==='account')await loadAccountPanel();
+    } else if(el('view-projects').classList.contains('active')) {
+      await loadProjects();
     }
+    toast(`${state.checkoutPlan} account plan activated`);
   }
 
   function kpi(label, value, sub) {

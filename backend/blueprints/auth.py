@@ -76,6 +76,8 @@ def me():
         "username": g.user.username,
         "email": g.user.email,
         "is_admin": g.user.is_admin,
+        "plan": g.user.account_plan,
+        "plan_expires_at": g.user.account_plan_expires_at.isoformat() if g.user.account_plan_expires_at else None,
         "created_at": g.user.created_at.isoformat(),
     })
 

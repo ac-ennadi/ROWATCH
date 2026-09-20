@@ -1,169 +1,137 @@
-from flask import Blueprint, request, jsonify, g
-from models import db, Project, Payment
-from utils import login_required, project_access
-from config import PLAN_PRICES
 from datetime import datetime, timedelta
+
+from flask import Blueprint, g, jsonify, request
+
+from config import PLAN_LIMITS, PLAN_PRICES
+from models import AccountPayment, AccountSubscription, User, db
+from utils import login_required
+
 
 payments_bp = Blueprint("payments", __name__, url_prefix="/payments")
 
-PLAN_DURATIONS = {1: "1 month", 3: "3 months", 12: "1 year"}
+
+def _plan_dict(name):
+    limits = PLAN_LIMITS[name]
+    data = {
+        "name": name,
+        "projects": limits["projects"],
+        "members": limits["members"],
+        "history_days": limits["history_days"],
+        "co_admins": limits["co_admins"],
+        "export": limits["export"],
+        "tasks": limits["tasks"],
+        "documents": limits["documents"],
+    }
+    if name == "free":
+        data["monthly"] = 0
+        data["yearly"] = 0
+    else:
+        data.update(PLAN_PRICES[name])
+    return data
+
+
+def _set_subscription(user, plan, duration, method, note=""):
+    subscription = user.subscription
+    if not subscription:
+        subscription = AccountSubscription(user_id=user.id)
+        db.session.add(subscription)
+    now = datetime.utcnow()
+    subscription.plan = plan
+    subscription.activated_by = method
+    subscription.note = note
+    if plan == "free":
+        subscription.expires_at = None
+    elif subscription.expires_at and subscription.expires_at > now:
+        subscription.expires_at += timedelta(days=duration * 30)
+    else:
+        subscription.expires_at = now + timedelta(days=duration * 30)
+    return subscription
+
 
 @payments_bp.route("/plans", methods=["GET"])
 def list_plans():
+    return jsonify({name: _plan_dict(name) for name in ("free", "pro", "studio")})
+
+
+@payments_bp.route("/account", methods=["GET"])
+@login_required
+def account_plan():
     return jsonify({
-        "free": {
-            "price": 0,
-            "projects":    1,
-            "members":     5,
-            "history":     "7 days",
-            "co_admins":   0,
-            "export":      False,
-        },
-        "pro": {
-            "monthly":  PLAN_PRICES["pro"]["monthly"],
-            "yearly":   PLAN_PRICES["pro"]["yearly"],
-            "projects":    3,
-            "members":     15,
-            "history":     "2 months",
-            "co_admins":   1,
-            "export":      True,
-        },
-        "studio": {
-            "monthly":  PLAN_PRICES["studio"]["monthly"],
-            "yearly":   PLAN_PRICES["studio"]["yearly"],
-            "projects":  "unlimited",
-            "members":   "unlimited",
-            "history":   "unlimited",
-            "co_admins": "unlimited",
-            "export":    True,
-        },
+        "plan": g.user.account_plan,
+        "expires_at": g.user.account_plan_expires_at.isoformat() if g.user.account_plan_expires_at else None,
+        "plans": {name: _plan_dict(name) for name in ("free", "pro", "studio")},
     })
+
 
 @payments_bp.route("/checkout", methods=["POST"])
 @login_required
 def checkout():
-    """
-    Dummy gateway — accepts all payments instantly.
-    Body: { project_id, plan, duration_months, method }
-    """
-    data       = request.get_json(silent=True) or {}
-    project_id = data.get("project_id")
-    plan       = data.get("plan")
-    duration   = int(data.get("duration_months") or 1)
-    method     = data.get("method") or "dummy"
-
-    if plan not in ("pro", "studio"):
+    """Dummy account-level gateway. Body: {plan, duration_months, method}."""
+    data = request.get_json(silent=True) or {}
+    plan = data.get("plan")
+    duration = int(data.get("duration_months") or 1)
+    method = data.get("method") or "dummy"
+    if plan not in ("free", "pro", "studio"):
         return jsonify({"error": "Invalid plan"}), 400
     if duration not in (1, 3, 12):
         return jsonify({"error": "Duration must be 1, 3, or 12 months"}), 400
 
-    project = Project.query.get(project_id)
-    if not project:
-        return jsonify({"error": "Project not found"}), 404
-    if project.owner_id != g.user.id:
-        return jsonify({"error": "Only owner can upgrade"}), 403
-
-    # Calculate price
-    if duration == 12:
+    if plan == "free":
+        amount = 0
+    elif duration == 12:
         amount = PLAN_PRICES[plan]["yearly"]
     else:
         amount = PLAN_PRICES[plan]["monthly"] * duration
 
-    # ── DUMMY GATEWAY: always succeeds ──
-    payment = Payment(
-        project_id=project_id,
+    subscription = _set_subscription(g.user, plan, duration, method)
+    db.session.add(AccountPayment(
+        user_id=g.user.id,
         plan=plan,
         duration=duration,
         method=method,
         amount=amount,
         status="completed",
-    )
-    db.session.add(payment)
-
-    # Activate plan
-    now = datetime.utcnow()
-    if project.plan_expires_at and project.plan_expires_at > now:
-        # extend existing plan
-        project.plan_expires_at += timedelta(days=duration * 30)
-    else:
-        project.plan_expires_at = now + timedelta(days=duration * 30)
-
-    project.plan              = plan
-    project.plan_activated_by = method
+    ))
     db.session.commit()
-
     return jsonify({
-        "ok":             True,
-        "plan":           plan,
-        "expires_at":     project.plan_expires_at.isoformat(),
+        "ok": True,
+        "plan": plan,
+        "expires_at": subscription.expires_at.isoformat() if subscription.expires_at else None,
         "amount_charged": amount,
-        "method":         method,
-        "message":        "Payment accepted (dummy gateway)",
+        "method": method,
+        "message": "Account plan updated (dummy gateway)",
     })
+
 
 @payments_bp.route("/admin/activate", methods=["POST"])
 @login_required
 def admin_activate():
-    """Manual activation for Robux payments (site admin only)."""
     if not g.user.is_admin:
         return jsonify({"error": "Admin only"}), 403
-
-    data       = request.get_json(silent=True) or {}
-    project_id = data.get("project_id")
-    plan       = data.get("plan")
-    duration   = int(data.get("duration_months") or 1)
-    note       = data.get("note") or ""
-
-    if plan not in ("pro", "studio"):
+    data = request.get_json(silent=True) or {}
+    plan = data.get("plan")
+    duration = int(data.get("duration_months") or 1)
+    target = User.query.get(data.get("user_id")) if data.get("user_id") else User.query.filter_by(username=data.get("username")).first()
+    if plan not in ("free", "pro", "studio"):
         return jsonify({"error": "Invalid plan"}), 400
-
-    project = Project.query.get(project_id)
-    if not project:
-        return jsonify({"error": "Project not found"}), 404
-
-    now = datetime.utcnow()
-    if project.plan_expires_at and project.plan_expires_at > now:
-        project.plan_expires_at += timedelta(days=duration * 30)
-    else:
-        project.plan_expires_at = now + timedelta(days=duration * 30)
-
-    project.plan              = plan
-    project.plan_activated_by = "robux"
-    project.plan_note         = note
-
-    payment = Payment(
-        project_id=project_id,
-        plan=plan,
-        duration=duration,
-        method="robux",
-        amount=0,
-        status="completed",
-    )
-    db.session.add(payment)
+    if not target:
+        return jsonify({"error": "User not found"}), 404
+    subscription = _set_subscription(target, plan, duration, "robux", data.get("note") or "")
+    db.session.add(AccountPayment(user_id=target.id, plan=plan, duration=duration, method="robux", amount=0, status="completed"))
     db.session.commit()
+    return jsonify({"ok": True, "username": target.username, "plan": plan, "expires_at": subscription.expires_at.isoformat() if subscription.expires_at else None})
 
-    return jsonify({
-        "ok":         True,
-        "plan":       plan,
-        "expires_at": project.plan_expires_at.isoformat(),
-        "note":       note,
-    })
 
-@payments_bp.route("/history/<project_id>", methods=["GET"])
+@payments_bp.route("/history", methods=["GET"])
 @login_required
-def payment_history(project_id):
-    project = Project.query.get(project_id)
-    if not project or project.owner_id != g.user.id:
-        return jsonify({"error": "Access denied"}), 403
-
-    payments = Payment.query.filter_by(project_id=project_id)\
-                            .order_by(Payment.created_at.desc()).all()
+def payment_history():
+    payments = AccountPayment.query.filter_by(user_id=g.user.id).order_by(AccountPayment.created_at.desc()).all()
     return jsonify([{
-        "id":         p.id,
-        "plan":       p.plan,
-        "duration":   p.duration,
-        "method":     p.method,
-        "amount":     p.amount,
-        "status":     p.status,
-        "created_at": p.created_at.isoformat(),
-    } for p in payments])
+        "id": payment.id,
+        "plan": payment.plan,
+        "duration": payment.duration,
+        "method": payment.method,
+        "amount": payment.amount,
+        "status": payment.status,
+        "created_at": payment.created_at.isoformat(),
+    } for payment in payments])

@@ -21,7 +21,7 @@ A clean RoWatch landing page + authenticated project dashboard for Roblox Studio
   - Markdown project documentation
   - dashboard analytics with authenticated Socket.IO live updates
   - Studio plugin event API for scripts, parts, and UI components
-  - demo plan checkout
+  - account-level Free / Pro / Studio plan checkout
 - `plugin/RoWatch.lua` — multi-project Roblox Studio plugin with saved project buttons
 
 ## Run locally
@@ -164,6 +164,34 @@ that member to complete or reopen them.
 
 Documentation supports multiple Markdown pages with a live rendered preview. All
 project members can read tasks and documents; owners and co-admins manage them.
+
+## Account-level plans
+
+Plans belong to user accounts, not projects. Every project owned by an account uses
+that owner's active plan for project count, members, history, co-admins, tasks,
+documents, and exports. Invited members see the owner's effective capabilities but
+manage their own subscription separately from Account.
+
+Free, Pro, and Studio selection and expiry information are available only in the
+Account screen. Existing paid project plans are migrated once at startup to the
+owner's best active account plan.
+
+## Automated tests
+
+Install the test dependencies and run the same regression suite used by CI:
+
+```bash
+python -m pip install -r requirements-dev.txt
+pytest -q
+```
+
+[`.github/workflows/tests.yml`](.github/workflows/tests.yml) runs automatically on
+every push and pull request. The suite uses an isolated temporary SQLite database
+and covers authentication cookies, logout, project/account plan limits, owner-plan
+inheritance, project membership, task assignment and independent completion,
+Markdown document permissions, Studio authentication/events, instance statistics,
+Socket.IO project rooms, health checks, frontend assets, and SPA fallback routing.
+A failing test makes the GitHub Actions check fail.
 
 ## Production notes
 

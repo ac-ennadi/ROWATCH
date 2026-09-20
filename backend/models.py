@@ -22,6 +22,22 @@ class User(db.Model):
 
     memberships   = db.relationship("ProjectMember", back_populates="user", cascade="all, delete")
     sessions      = db.relationship("Session", back_populates="user", cascade="all, delete")
+    subscription  = db.relationship("AccountSubscription", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    account_payments = db.relationship("AccountPayment", back_populates="user", cascade="all, delete")
+
+    @property
+    def account_plan(self):
+        if not self.subscription:
+            return "free"
+        if self.subscription.expires_at and self.subscription.expires_at < datetime.utcnow():
+            return "free"
+        return self.subscription.plan
+
+    @property
+    def account_plan_expires_at(self):
+        if self.account_plan == "free":
+            return None
+        return self.subscription.expires_at
 
 class Project(db.Model):
     __tablename__ = "projects"
@@ -43,21 +59,25 @@ class Project(db.Model):
     documents  = db.relationship("ProjectDocument", back_populates="project", cascade="all, delete")
 
     @property
+    def effective_plan(self):
+        return self.owner.account_plan
+
+    @property
     def history_days(self):
-        if self.plan == "studio": return None   # unlimited
-        if self.plan == "pro":    return 60
+        if self.effective_plan == "studio": return None   # unlimited
+        if self.effective_plan == "pro":    return 60
         return 7                                # free
 
     @property
     def max_members(self):
-        if self.plan == "studio": return None
-        if self.plan == "pro":    return 15
+        if self.effective_plan == "studio": return None
+        if self.effective_plan == "pro":    return 15
         return 5
 
     @property
     def max_co_admins(self):
-        if self.plan == "studio": return None
-        if self.plan == "pro":    return 1
+        if self.effective_plan == "studio": return None
+        if self.effective_plan == "pro":    return 1
         return 0
 
 class ProjectMember(db.Model):
@@ -154,6 +174,32 @@ class ProjectDocument(db.Model):
 
     project = db.relationship("Project", back_populates="documents")
     created_by = db.relationship("User", foreign_keys=[created_by_id])
+
+
+class AccountSubscription(db.Model):
+    __tablename__ = "account_subscriptions"
+    user_id       = db.Column(db.String(36), db.ForeignKey("users.id"), primary_key=True)
+    plan          = db.Column(db.String(16), default="free", nullable=False)
+    expires_at    = db.Column(db.DateTime, nullable=True)
+    activated_by  = db.Column(db.String(16), nullable=True)
+    note          = db.Column(db.Text, nullable=True)
+    updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = db.relationship("User", back_populates="subscription")
+
+
+class AccountPayment(db.Model):
+    __tablename__ = "account_payments"
+    id         = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    user_id    = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
+    plan       = db.Column(db.String(16), nullable=False)
+    duration   = db.Column(db.Integer, nullable=False)
+    method     = db.Column(db.String(16), nullable=False)
+    amount     = db.Column(db.Float, nullable=False)
+    status     = db.Column(db.String(16), default="pending")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship("User", back_populates="account_payments")
 
 
 class Payment(db.Model):

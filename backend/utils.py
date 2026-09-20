@@ -64,12 +64,6 @@ def plugin_auth(f):
         member = ProjectMember.query.filter_by(project_id=project.id, user_id=user.id).first()
         if not member:
             return jsonify({"error": "Not a member of this project"}), 403
-        # check plan expiry
-        if project.plan != "free" and project.plan_expires_at:
-            if project.plan_expires_at < datetime.utcnow():
-                project.plan = "free"
-                project.plan_expires_at = None
-                db.session.commit()
         g.project = project
         g.user    = user
         g.member  = member

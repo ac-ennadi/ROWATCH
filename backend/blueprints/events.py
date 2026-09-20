@@ -170,5 +170,5 @@ def ping():
         "ok":       True,
         "project":  g.project.name,
         "username": g.user.username,
-        "plan":     g.project.plan,
+        "plan":     g.project.effective_plan,
     })
