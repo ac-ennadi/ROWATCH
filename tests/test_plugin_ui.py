@@ -29,15 +29,15 @@ def test_plugin_uses_cards_focus_states_and_button_motion():
     assert 'return border' in lua
 
 
-def test_task_completion_updates_in_place():
+def test_plugin_tasks_are_compact_incomplete_first_toggles():
     lua = source()
-    success_update = '''taskItem.my_completed = nextCompleted
-                taskItem.completed_count += nextCompleted and 1 or -1
-                updateTaskVisual()
-                updateCompletion()'''
-    assert success_update in lua
-    assert 'taskButton:SetAttribute("BaseColor", base)' in lua
-
+    assert "table.sort(tasks" in lua
+    assert "return not a.my_completed" in lua
+    assert 'taskButton.Text = "•  " .. taskItem.title' in lua
+    assert "taskItem.my_completed and COLORS.good or COLORS.text" in lua
+    assert "task.delay(0.12, function() showTasks(profile) end)" in lua
+    assert "taskItem.description_md" not in lua
+    assert "assignees complete" not in lua
 
 def test_plugin_core_tracking_and_multi_project_behavior_remain_connected():
     lua = source()
@@ -76,3 +76,13 @@ def test_plugin_matches_compact_studio_reference_shell():
     assert 'label("●  LIVE SESSION"' in lua
     assert 'local timer = label("00:00:00"' in lua
     assert 'showSettings = function' in lua
+
+
+def test_project_selection_only_starts_sessions_and_api_key_is_contained():
+    lua = source()
+    assert "Ready to track" not in lua
+    assert lua.count('local tasksButton = button("View my assigned tasks"') == 1
+    assert lua.count('local docsButton = button("View project docs"') == 1
+    assert 'node.TextTruncate = Enum.TextTruncate.AtEnd' in lua
+    assert 'node.ClipsDescendants = true' in lua
+    assert 'node.MultiLine = false' in lua

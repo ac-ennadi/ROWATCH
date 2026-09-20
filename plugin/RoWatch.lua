@@ -288,6 +288,9 @@ local function input(placeholder, value, secret, parent)
     node.Text = value or ""
     node.ClearTextOnFocus = false
     node.TextXAlignment = Enum.TextXAlignment.Left
+    node.TextTruncate = Enum.TextTruncate.AtEnd
+    node.ClipsDescendants = true
+    node.MultiLine = false
     node.Font = Enum.Font.Gotham
     node.TextSize = 12
     node.BorderSizePixel = 0
@@ -662,7 +665,7 @@ showTasks = function(profile, message)
     clear()
     header("My tasks")
     if message then banner(message, message:find("Could not") and "error" or "success") end
-    intro(profile.name or "Project", "My tasks", "Only tasks assigned to @" .. pluginUsername .. " appear here.")
+    intro(profile.name or "Project", "My tasks", "Press a task to toggle your completion.")
 
     local tasks, err = apiCall(profile, "/api/v1/tasks", "GET")
     if not tasks then
@@ -672,32 +675,25 @@ showTasks = function(profile, message)
         label("You are all caught up", 28, COLORS.text, 14, true, empty)
         label("New tasks assigned from the RoWatch website will appear here.", 38, COLORS.muted, 10, false, empty)
     else
-        label(tostring(#tasks) .. " TASK" .. (#tasks == 1 and "" or "S"), 18, COLORS.muted, 9, true)
+        table.sort(tasks, function(a, b)
+            if a.my_completed ~= b.my_completed then
+                return not a.my_completed
+            end
+            return string.lower(a.title or "") < string.lower(b.title or "")
+        end)
         for _, taskItem in ipairs(tasks) do
-            local taskCard = card()
-            local taskButton = button("", taskItem.my_completed and COLORS.goodSoft or COLORS.panelAlt, taskItem.my_completed and COLORS.good or COLORS.text, 42, taskCard)
+            local taskButton = button("", COLORS.panel, taskItem.my_completed and COLORS.good or COLORS.text, 34)
             taskButton.TextXAlignment = Enum.TextXAlignment.Left
-            addPadding(taskButton, 11, 0)
+            taskButton.TextTruncate = Enum.TextTruncate.AtEnd
+            addPadding(taskButton, 10, 0)
 
             local function updateTaskVisual()
-                taskButton.Text = (taskItem.my_completed and "[x]  " or "[ ]  ") .. taskItem.title
+                taskButton.Text = "•  " .. taskItem.title
                 taskButton.TextColor3 = taskItem.my_completed and COLORS.good or COLORS.text
-                local base = taskItem.my_completed and COLORS.goodSoft or COLORS.panelAlt
-                taskButton.BackgroundColor3 = base
-                taskButton:SetAttribute("BaseColor", base)
+                taskButton.BackgroundColor3 = COLORS.panel
+                taskButton:SetAttribute("BaseColor", COLORS.panel)
             end
             updateTaskVisual()
-
-            if taskItem.description_md and taskItem.description_md ~= "" then
-                local plain = taskItem.description_md:gsub("[#*_]", ""):gsub("%s+", " ")
-                if #plain > 130 then plain = plain:sub(1, 127) .. "..." end
-                label(plain, 38, COLORS.muted, 10, false, taskCard)
-            end
-            local completionLabel = label("", 18, COLORS.muted, 9, false, taskCard)
-            local function updateCompletion()
-                completionLabel.Text = tostring(taskItem.completed_count) .. "/" .. tostring(#taskItem.assignments) .. " assignees complete"
-            end
-            updateCompletion()
 
             taskButton.MouseButton1Click:Connect(function()
                 local nextCompleted = not taskItem.my_completed
@@ -709,17 +705,14 @@ showTasks = function(profile, message)
                     return
                 end
                 taskItem.my_completed = nextCompleted
-                taskItem.completed_count += nextCompleted and 1 or -1
                 updateTaskVisual()
-                updateCompletion()
+                task.delay(0.12, function() showTasks(profile) end)
             end)
         end
     end
 
-    local back = button(sessionId and "<  Back to live session" or "<  Back to projects", COLORS.panel, COLORS.muted, 36)
-    back.MouseButton1Click:Connect(function()
-        if sessionId then showActive() else showProjects() end
-    end)
+    local back = button("<  Back to live session", COLORS.panel, COLORS.muted, 36)
+    back.MouseButton1Click:Connect(function() showActive() end)
 end
 
 showDocument = function(profile, projectDocs, document)
@@ -808,8 +801,6 @@ showProjects = function(message, isError)
     for index, profile in ipairs(profiles) do
         local profileCard = card()
         label(profile.name or "Project", 25, COLORS.text, 14, true, profileCard)
-        label("Ready to track  /  " .. (profile.role or "member"), 18, COLORS.muted, 10, false, profileCard)
-
         local startButton = button("Start session", COLORS.accent, COLORS.white, 40, profileCard)
         startButton.MouseButton1Click:Connect(function()
             startButton.Text = "Connecting..."
@@ -827,10 +818,6 @@ showProjects = function(message, isError)
             end
         end)
 
-        local tasksButton = button("My tasks", COLORS.panelAlt, COLORS.text, 34, profileCard)
-        tasksButton.MouseButton1Click:Connect(function() showTasks(profile) end)
-        local docsButton = button("Project docs", COLORS.panelAlt, COLORS.text, 34, profileCard)
-        docsButton.MouseButton1Click:Connect(function() showDocs(profile) end)
     end
 
     local refresh = button("Refresh projects", COLORS.panelAlt, COLORS.text, 38)
