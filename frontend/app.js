@@ -449,7 +449,8 @@
       ? events
       : events.filter(event => event.username === state.activityMemberFilter);
     const filter = isAdmin() ? `<div class="activity-filter"><label>Filter by member<select id="activityMemberFilter"><option value="all">All members</option>${members.map(member=>`<option value="${esc(member.username)}" ${state.activityMemberFilter===member.username?'selected':''}>${esc(member.username)}</option>`).join('')}</select></label><span class="role-box">${visibleEvents.length}/${events.length} shown</span></div>` : '';
-    content.innerHTML = `<div class="toolbar"><div><h2>${isAdmin() ? 'Project activity' : 'My activity'}</h2><p>Newest Studio events first. Up to 200 are shown.</p></div>${filter}</div>${visibleEvents.length ? activityTable(visibleEvents.slice(0,200)) : emptyInline('No matching activity', state.activityMemberFilter==='all'?'Connect the plugin and start a session.':'This member has no recorded activity.')}`;
+    const exportButton = isAdmin() && state.project.plan !== 'free' ? `<a class="btn btn-secondary" href="/dashboard/${state.project.id}/export.csv" download>Export CSV</a>` : '';
+    content.innerHTML = `<div class="toolbar"><div><h2>${isAdmin() ? 'Project activity' : 'My activity'}</h2><p>Newest Studio events first. Up to 200 are shown.</p></div><div class="toolbar-actions">${filter}${exportButton}</div></div>${visibleEvents.length ? activityTable(visibleEvents.slice(0,200)) : emptyInline('No matching activity', state.activityMemberFilter==='all'?'Connect the plugin and start a session.':'This member has no recorded activity.')}`;
     el('activityMemberFilter')?.addEventListener('change', event => {
       state.activityMemberFilter = event.target.value;
       loadActivity();

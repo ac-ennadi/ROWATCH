@@ -1,8 +1,11 @@
-from flask import Blueprint, jsonify, g
+from flask import Blueprint, Response, jsonify, g
+import csv
+import io
 from models import Session, ScriptEvent, InstanceEvent, ProjectMember
 from utils import login_required, project_access
 from datetime import datetime, timedelta
 from sqlalchemy import func
+from config import PLAN_LIMITS
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 
@@ -167,6 +170,44 @@ def full_activity(project_id):
     return jsonify(all_events)
 
 # ── Charts data ──────────────────────────────────────────────
+
+@dashboard_bp.route("/<project_id>/export.csv", methods=["GET"])
+@project_access(role_required="admin")
+def export_activity(project_id):
+    """Export retained project activity for paid plans."""
+    if not PLAN_LIMITS[g.project.effective_plan]["export"]:
+        return jsonify({
+            "error": "CSV export requires a Pro or Studio account plan.",
+            "upgrade_required": True,
+        }), 403
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "username", "session_id", "event_type", "name", "class_name",
+        "chars_added", "chars_removed", "count", "occurred_at",
+    ])
+    sessions = Session.query.filter_by(project_id=project_id).order_by(Session.started_at.asc()).all()
+    for session in sessions:
+        for event in sorted(session.script_events, key=lambda item: item.occurred_at):
+            writer.writerow([
+                session.user.username, session.id, event.event_type, event.script_name, "",
+                event.chars_added, event.chars_removed, "", event.occurred_at.isoformat(),
+            ])
+        for event in sorted(session.instance_events, key=lambda item: item.occurred_at):
+            writer.writerow([
+                session.user.username, session.id, f"{event.category}_{event.action}",
+                event.instance_name, event.class_name, "", "", event.count,
+                event.occurred_at.isoformat(),
+            ])
+    filename = f"rowatch-{g.project.name[:48].strip() or 'project'}-activity.csv"
+    safe_filename = "".join(character if character.isalnum() or character in "-_." else "-" for character in filename)
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'},
+    )
+
 
 @dashboard_bp.route("/<project_id>/charts/daily", methods=["GET"])
 @project_access(role_required="admin")
