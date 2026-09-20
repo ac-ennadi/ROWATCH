@@ -4,7 +4,7 @@ A clean RoWatch landing page + authenticated project dashboard for Roblox Studio
 
 ## Included
 
-- `frontend/` — vanilla HTML/CSS/JS SPA
+- `frontend/` - vanilla HTML/CSS/JS SPA
   - public landing page
   - login / registration
   - **Login → My Projects → Project Dashboard** flow
@@ -14,7 +14,7 @@ A clean RoWatch landing page + authenticated project dashboard for Roblox Studio
   - account controls
   - light + dark themes
   - restrained Roblox-Studio-blue accent (`#0B6FEA`)
-- `backend/` — Flask + SQLAlchemy API
+- `backend/` - Flask + SQLAlchemy API
   - JWT cookie auth
   - project CRUD and roles
   - multi-assignee tasks with per-member completion
@@ -22,7 +22,7 @@ A clean RoWatch landing page + authenticated project dashboard for Roblox Studio
   - dashboard analytics with authenticated Socket.IO live updates
   - Studio plugin event API for scripts, parts, and UI components
   - account-level Free / Pro / Studio plan checkout
-- `plugin/RoWatch.lua` — multi-project Roblox Studio plugin with saved project buttons
+- `plugin/RoWatch.lua` - multi-project Roblox Studio plugin with saved project buttons
 
 ## Run locally
 

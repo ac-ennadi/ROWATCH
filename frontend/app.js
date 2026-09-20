@@ -84,9 +84,9 @@
   }
 
   function fmtDate(iso, withTime = true) {
-    if (!iso) return '—';
+    if (!iso) return '-';
     const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '—';
+    if (Number.isNaN(d.getTime())) return '-';
     return new Intl.DateTimeFormat(undefined, withTime ? {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     } : {year: 'numeric', month: 'short', day: 'numeric'}).format(d);
@@ -470,7 +470,7 @@
         ${kpi('UI components', compactNumber(members.reduce((sum,m)=>sum+m.stats.ui_added,0)), `${compactNumber(members.reduce((sum,m)=>sum+m.stats.ui_removed,0))} removed`)}
       </div>
       <div class="dashboard-grid">
-        <section class="panel-card"><div class="panel-card-head"><div><h2>Activity — last 14 days</h2><p>Completed and active sessions by day.</p></div></div><div class="chart-box"><canvas id="overviewDailyChart"></canvas></div></section>
+        <section class="panel-card"><div class="panel-card-head"><div><h2>Activity - last 14 days</h2><p>Completed and active sessions by day.</p></div></div><div class="chart-box"><canvas id="overviewDailyChart"></canvas></div></section>
         <div class="overview-side-stack">
           <section class="panel-card online-members-panel"><div class="panel-card-head"><div><h2>Currently online</h2><p>Active in this project now.</p></div><span class="online-count">${members.filter(member=>member.active).length}</span></div>${members.some(member=>member.active)?`<div class="online-member-list">${members.filter(member=>member.active).map(member=>`<div class="online-member"><span class="presence-dot"></span><strong>${esc(member.username)}</strong><small>${esc(roleName(member.role))}</small></div>`).join('')}</div>`:emptyInline('Nobody online','No project member has an active Studio session.')}</section>
           <section class="panel-card"><div class="panel-card-head"><div><h2>Member sessions</h2><p>Session count by developer.</p></div></div><div class="chart-box compact-chart"><canvas id="overviewMemberChart"></canvas></div></section>
@@ -920,7 +920,7 @@
   }
 
   function memberActions(member) {
-    if (!isOwner() || member.role === 'owner') return '<span class="muted">—</span>';
+    if (!isOwner() || member.role === 'owner') return '<span class="muted">-</span>';
     const next = member.role === 'co_admin' ? 'member' : 'co_admin';
     return `<div class="member-actions"><button class="mini-btn" type="button" data-member-role="${next}" data-user-id="${esc(member.user_id)}">Make ${next === 'co_admin' ? 'Project manager' : 'member'}</button><button class="mini-btn danger" type="button" data-member-remove data-user-id="${esc(member.user_id)}" data-username="${esc(member.username)}">Remove</button></div>`;
   }
@@ -1163,7 +1163,7 @@
   }
 
   function activityTable(events) {
-    return `<div class="data-table-wrap"><table class="data-table"><thead><tr><th>Member</th><th>Target</th><th>Event</th><th>Change</th><th>Time</th></tr></thead><tbody>${events.map(e=>`<tr><td><strong>${esc(e.username || state.user?.username || 'User')}</strong></td><td class="mono">${esc(e.script || e.script_name || e.instance_name || '—')}</td><td><span class="event-box">${esc(String(e.event_type || '').replace('_',' '))}</span></td><td>${e.count ? esc(`×${e.count} ${e.class_name || ''}`) : `<span class="positive">+${Number(e.chars_added)||0}</span> / <span class="negative">-${Number(e.chars_removed)||0}</span>`}</td><td class="muted">${esc(fmtDate(e.occurred_at))}</td></tr>`).join('')}</tbody></table></div>`;
+    return `<div class="data-table-wrap"><table class="data-table"><thead><tr><th>Member</th><th>Target</th><th>Event</th><th>Change</th><th>Time</th></tr></thead><tbody>${events.map(e=>`<tr><td><strong>${esc(e.username || state.user?.username || 'User')}</strong></td><td class="mono">${esc(e.script || e.script_name || e.instance_name || '-')}</td><td><span class="event-box">${esc(String(e.event_type || '').replace('_',' '))}</span></td><td>${e.count ? esc(`×${e.count} ${e.class_name || ''}`) : `<span class="positive">+${Number(e.chars_added)||0}</span> / <span class="negative">-${Number(e.chars_removed)||0}</span>`}</td><td class="muted">${esc(fmtDate(e.occurred_at))}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
   function sessionTable(sessions) {
