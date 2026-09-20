@@ -3,7 +3,7 @@ from datetime import datetime
 from flask import Blueprint, g, jsonify, request
 
 from config import PLAN_LIMITS
-from models import db, ProjectDocument, ProjectMember, Task, TaskAssignment
+from models import db, ProjectDocument, ProjectMember, Task, TaskAssignment, TaskColumn
 from realtime import publish_project_update
 from utils import plugin_auth, project_access
 
@@ -30,6 +30,47 @@ def _document_content_error(content):
             "upgrade_required": True,
         }), 400
     return None
+
+
+DEFAULT_TASK_COLUMNS = ("Backlog", "To do", "In progress", "Done")
+
+
+def _ensure_task_columns(project_id):
+    columns = TaskColumn.query.filter_by(project_id=project_id).order_by(TaskColumn.position, TaskColumn.created_at).all()
+    if columns:
+        return columns
+    columns = [TaskColumn(project_id=project_id, name=name, position=index) for index, name in enumerate(DEFAULT_TASK_COLUMNS)]
+    db.session.add_all(columns)
+    db.session.flush()
+    for index, task_item in enumerate(Task.query.filter_by(project_id=project_id, column_id=None).order_by(Task.created_at).all()):
+        task_item.column_id = columns[0].id
+        task_item.position = index
+    db.session.commit()
+    return columns
+
+
+def _column_dict(column):
+    return {
+        "id": column.id,
+        "name": column.name,
+        "position": column.position,
+        "task_count": Task.query.filter_by(column_id=column.id).count(),
+    }
+
+
+def _column_for_project(project_id, column_id):
+    return TaskColumn.query.filter_by(id=column_id, project_id=project_id).first()
+
+
+def _append_position(column_id):
+    maximum = db.session.query(db.func.max(Task.position)).filter(Task.column_id == column_id).scalar()
+    return (maximum if maximum is not None else -1) + 1
+
+
+def _normalize_task_positions(column_id):
+    tasks = Task.query.filter_by(column_id=column_id).order_by(Task.position, Task.created_at).all()
+    for index, task_item in enumerate(tasks):
+        task_item.position = index
 
 
 def _is_admin():
@@ -79,6 +120,9 @@ def _task_dict(task, current_user_id):
     return {
         "id": task.id,
         "title": task.title,
+        "column_id": task.column_id,
+        "column_name": task.column.name if task.column else None,
+        "position": task.position,
         "description_md": task.description_md or "",
         "due_at": task.due_at.isoformat() if task.due_at else None,
         "created_by": task.created_by.username,
@@ -116,12 +160,165 @@ def _valid_assignees(project_id, user_ids):
     return members
 
 
+@workspace_bp.route("/<project_id>/task-columns", methods=["GET"])
+@project_access()
+def list_task_columns(project_id):
+    return jsonify([_column_dict(column) for column in _ensure_task_columns(project_id)])
+
+
+@workspace_bp.route("/<project_id>/task-columns", methods=["POST"])
+@project_access()
+def create_task_column(project_id):
+    denied = _require_admin()
+    if denied:
+        return denied
+    name = str((request.get_json(silent=True) or {}).get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Column name is required"}), 400
+    if len(name) > NAME_MAX_LENGTH:
+        return jsonify({"error": f"Column name must be {NAME_MAX_LENGTH} characters or fewer"}), 400
+    _ensure_task_columns(project_id)
+    duplicate = TaskColumn.query.filter(
+        TaskColumn.project_id == project_id,
+        db.func.lower(TaskColumn.name) == name.lower(),
+    ).first()
+    if duplicate:
+        return jsonify({"error": "A column with this name already exists"}), 409
+    position = TaskColumn.query.filter_by(project_id=project_id).count()
+    column = TaskColumn(project_id=project_id, name=name, position=position)
+    db.session.add(column)
+    db.session.commit()
+    publish_project_update(project_id, "task_board_updated", {"column_id": column.id})
+    return jsonify(_column_dict(column)), 201
+
+
+@workspace_bp.route("/<project_id>/task-columns/<column_id>", methods=["PATCH"])
+@project_access()
+def update_task_column(project_id, column_id):
+    denied = _require_admin()
+    if denied:
+        return denied
+    column = _column_for_project(project_id, column_id)
+    if not column:
+        return jsonify({"error": "Task column not found"}), 404
+    name = str((request.get_json(silent=True) or {}).get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Column name is required"}), 400
+    if len(name) > NAME_MAX_LENGTH:
+        return jsonify({"error": f"Column name must be {NAME_MAX_LENGTH} characters or fewer"}), 400
+    duplicate = TaskColumn.query.filter(
+        TaskColumn.project_id == project_id,
+        TaskColumn.id != column.id,
+        db.func.lower(TaskColumn.name) == name.lower(),
+    ).first()
+    if duplicate:
+        return jsonify({"error": "A column with this name already exists"}), 409
+    column.name = name
+    column.updated_at = datetime.utcnow()
+    db.session.commit()
+    publish_project_update(project_id, "task_board_updated", {"column_id": column.id})
+    return jsonify(_column_dict(column))
+
+
+@workspace_bp.route("/<project_id>/task-columns/reorder", methods=["PUT"])
+@project_access()
+def reorder_task_columns(project_id):
+    denied = _require_admin()
+    if denied:
+        return denied
+    columns = _ensure_task_columns(project_id)
+    column_ids = [str(value) for value in ((request.get_json(silent=True) or {}).get("column_ids") or [])]
+    existing = {column.id: column for column in columns}
+    if len(column_ids) != len(existing) or len(set(column_ids)) != len(existing) or set(column_ids) != set(existing):
+        return jsonify({"error": "column_ids must contain every project column exactly once"}), 400
+    for position, column_id in enumerate(column_ids):
+        existing[column_id].position = position
+    db.session.commit()
+    publish_project_update(project_id, "task_board_updated", {})
+    return jsonify([_column_dict(existing[column_id]) for column_id in column_ids])
+
+
+@workspace_bp.route("/<project_id>/task-columns/<column_id>", methods=["DELETE"])
+@project_access()
+def delete_task_column(project_id, column_id):
+    denied = _require_admin()
+    if denied:
+        return denied
+    columns = _ensure_task_columns(project_id)
+    column = next((item for item in columns if item.id == column_id), None)
+    if not column:
+        return jsonify({"error": "Task column not found"}), 404
+    if len(columns) == 1:
+        return jsonify({"error": "A task board must keep at least one column"}), 400
+    data = request.get_json(silent=True) or {}
+    tasks = Task.query.filter_by(column_id=column.id).order_by(Task.position, Task.created_at).all()
+    destination = None
+    if tasks:
+        destination = _column_for_project(project_id, data.get("destination_column_id"))
+        if not destination or destination.id == column.id:
+            return jsonify({
+                "error": "Choose another column for these tasks before deleting this column.",
+                "task_count": len(tasks),
+                "destination_required": True,
+            }), 409
+        next_position = _append_position(destination.id)
+        for offset, task_item in enumerate(tasks):
+            task_item.column_id = destination.id
+            task_item.position = next_position + offset
+        # Persist the reassignment before SQLAlchemy processes deletion of the old relationship.
+        db.session.flush()
+    db.session.delete(column)
+    remaining = [item for item in columns if item.id != column.id]
+    for position, item in enumerate(remaining):
+        item.position = position
+    db.session.commit()
+    publish_project_update(project_id, "task_board_updated", {"deleted_column_id": column.id})
+    return jsonify({"ok": True, "moved_tasks": len(tasks), "destination_column_id": destination.id if destination else None})
+
+
+@workspace_bp.route("/<project_id>/tasks/<task_id>/move", methods=["POST"])
+@project_access()
+def move_task(project_id, task_id):
+    denied = _require_admin()
+    if denied:
+        return denied
+    task_item = Task.query.filter_by(id=task_id, project_id=project_id).first()
+    if not task_item:
+        return jsonify({"error": "Task not found"}), 404
+    data = request.get_json(silent=True) or {}
+    destination = _column_for_project(project_id, data.get("column_id"))
+    if not destination:
+        return jsonify({"error": "Task column not found"}), 400
+    try:
+        requested_position = int(data.get("position", 0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "position must be a whole number"}), 400
+    source_column_id = task_item.column_id
+    if source_column_id == destination.id:
+        ordered = [item for item in Task.query.filter_by(column_id=destination.id).order_by(Task.position, Task.created_at).all() if item.id != task_item.id]
+    else:
+        ordered = Task.query.filter_by(column_id=destination.id).order_by(Task.position, Task.created_at).all()
+    target_position = max(0, min(requested_position, len(ordered)))
+    ordered.insert(target_position, task_item)
+    task_item.column_id = destination.id
+    for position, item in enumerate(ordered):
+        item.position = position
+    if source_column_id and source_column_id != destination.id:
+        _normalize_task_positions(source_column_id)
+    task_item.updated_at = datetime.utcnow()
+    db.session.commit()
+    publish_project_update(project_id, "task_updated", {"task_id": task_item.id})
+    return jsonify(_task_dict(task_item, g.user.id))
+
+
 @workspace_bp.route("/<project_id>/tasks", methods=["GET"])
 @project_access()
 def list_tasks(project_id):
-    tasks = Task.query.filter_by(project_id=project_id).order_by(Task.created_at.desc()).all()
+    columns = _ensure_task_columns(project_id)
+    tasks = Task.query.filter_by(project_id=project_id).order_by(Task.column_id, Task.position, Task.created_at).all()
     return jsonify({
         "items": [_task_dict(task, g.user.id) for task in tasks],
+        "columns": [_column_dict(column) for column in columns],
         "usage": {"current": len(tasks), "limit": _feature_limit("tasks"), "plan": g.project.effective_plan},
     })
 
@@ -147,9 +344,15 @@ def create_task(project_id):
         due_at = _parse_due(data.get("due_at"))
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
+    columns = _ensure_task_columns(project_id)
+    column = _column_for_project(project_id, data.get("column_id")) if data.get("column_id") else columns[0]
+    if not column:
+        return jsonify({"error": "Task column not found"}), 400
     task = Task(
         project_id=project_id,
         created_by_id=g.user.id,
+        column_id=column.id,
+        position=_append_position(column.id),
         title=title,
         description_md=str(data.get("description_md") or ""),
         due_at=due_at,
@@ -180,6 +383,15 @@ def update_task(project_id, task_id):
         if len(title) > NAME_MAX_LENGTH:
             return jsonify({"error": f"Task title must be {NAME_MAX_LENGTH} characters or fewer"}), 400
         task.title = title
+    if "column_id" in data and data.get("column_id") != task.column_id:
+        column = _column_for_project(project_id, data.get("column_id"))
+        if not column:
+            return jsonify({"error": "Task column not found"}), 400
+        previous_column_id = task.column_id
+        task.column_id = column.id
+        task.position = _append_position(column.id)
+        if previous_column_id:
+            _normalize_task_positions(previous_column_id)
     if "description_md" in data:
         task.description_md = str(data.get("description_md") or "")
     if "due_at" in data:

@@ -16,6 +16,9 @@ def test_studio_session_script_and_instance_stats(registered_client, project):
     token = issue_api_key(registered_client)
     headers = {"X-Project-ID": project["id"], "X-API-Key": token}
     session_id = registered_client.post("/api/events/session/start", headers=headers).get_json()["session_id"]
+    active_member = registered_client.get(f"/projects/{project['id']}/members").get_json()[0]
+    assert active_member["active"] is True
+    assert active_member["last_seen"] is None
     assert registered_client.post("/api/events/script/open", headers=headers, json={"session_id": session_id, "script": "Workspace.Main"}).status_code == 200
     closed = registered_client.post("/api/events/script/close", headers=headers, json={
         "session_id": session_id, "script": "Workspace.Main", "chars_added": 12, "chars_removed": 3,
@@ -31,8 +34,14 @@ def test_studio_session_script_and_instance_stats(registered_client, project):
     assert instances.status_code == 200
     assert registered_client.post("/api/events/session/heartbeat", headers=headers, json={"session_id": session_id}).status_code == 200
     assert registered_client.post("/api/events/session/end", headers=headers, json={"session_id": session_id}).status_code == 200
+    offline_member = registered_client.get(f"/projects/{project['id']}/members").get_json()[0]
+    assert offline_member["active"] is False
+    assert offline_member["last_seen"] is not None
 
-    stats = registered_client.get(f"/dashboard/{project['id']}/overview").get_json()["members"][0]["stats"]
+    overview_member = registered_client.get(f"/dashboard/{project['id']}/overview").get_json()["members"][0]
+    assert overview_member["active"] is False
+    assert overview_member["last_seen"] == offline_member["last_seen"]
+    stats = overview_member["stats"]
     assert stats["chars_added"] == 12
     assert stats["chars_removed"] == 3
     assert stats["parts_added"] == 2

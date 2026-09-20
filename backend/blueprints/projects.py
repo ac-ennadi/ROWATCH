@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, g
-from models import db, Project, ProjectMember, User
+from models import db, Project, ProjectMember, Session, User
 from utils import account_api_key_required, login_required, project_access
 from config import PLAN_LIMITS
 
@@ -92,12 +92,24 @@ def update_project(project_id):
 @project_access()
 def list_members(project_id):
     members = ProjectMember.query.filter_by(project_id=project_id).all()
-    return jsonify([{
-        "user_id": m.user_id,
-        "username": m.user.username,
-        "role": m.role,
-        "joined_at": m.joined_at.isoformat(),
-    } for m in members])
+    sessions_by_user = {}
+    for session in Session.query.filter_by(project_id=project_id).order_by(Session.started_at.desc()).all():
+        sessions_by_user.setdefault(session.user_id, []).append(session)
+    result = []
+    for member in members:
+        sessions = sessions_by_user.get(member.user_id, [])
+        active = any(session.ended_at is None for session in sessions)
+        latest = sessions[0] if sessions else None
+        last_seen = None if active or not latest else (latest.ended_at or latest.started_at).isoformat()
+        result.append({
+            "user_id": member.user_id,
+            "username": member.user.username,
+            "role": member.role,
+            "joined_at": member.joined_at.isoformat(),
+            "active": active,
+            "last_seen": last_seen,
+        })
+    return jsonify(result)
 
 
 @projects_bp.route("/<project_id>/members/invite", methods=["POST"])

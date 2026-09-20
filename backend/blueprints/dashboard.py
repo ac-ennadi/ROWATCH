@@ -100,12 +100,15 @@ def project_overview(project_id):
             project_id=project_id,
             user_id=m.user_id
         ).all()
+        active = any(session.ended_at is None for session in sessions)
+        latest = max(sessions, key=lambda session: session.started_at) if sessions else None
         result.append({
             "user_id":  m.user_id,
             "username": m.user.username,
             "role":     m.role,
             "stats":    session_stats(sessions),
-            "active":   any(s.ended_at is None for s in sessions),
+            "active":   active,
+            "last_seen": None if active or not latest else (latest.ended_at or latest.started_at).isoformat(),
         })
 
     return jsonify({

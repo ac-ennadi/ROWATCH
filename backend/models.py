@@ -57,6 +57,7 @@ class Project(db.Model):
     owner      = db.relationship("User", foreign_keys=[owner_id])
     members    = db.relationship("ProjectMember", back_populates="project", cascade="all, delete")
     sessions   = db.relationship("Session", back_populates="project", cascade="all, delete")
+    task_columns = db.relationship("TaskColumn", back_populates="project", cascade="all, delete-orphan", order_by="TaskColumn.position")
     tasks      = db.relationship("Task", back_populates="project", cascade="all, delete")
     documents  = db.relationship("ProjectDocument", back_populates="project", cascade="all, delete")
 
@@ -137,11 +138,26 @@ class InstanceEvent(db.Model):
 
     session = db.relationship("Session", back_populates="instance_events")
 
+class TaskColumn(db.Model):
+    __tablename__ = "task_columns"
+    id         = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    project_id = db.Column(db.String(36), db.ForeignKey("projects.id"), nullable=False, index=True)
+    name       = db.Column(db.String(32), nullable=False)
+    position   = db.Column(db.Integer, default=0, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    project = db.relationship("Project", back_populates="task_columns")
+    tasks = db.relationship("Task", back_populates="column")
+
+
 class Task(db.Model):
     __tablename__ = "tasks"
     id             = db.Column(db.String(36), primary_key=True, default=gen_uuid)
     project_id     = db.Column(db.String(36), db.ForeignKey("projects.id"), nullable=False)
     created_by_id  = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
+    column_id     = db.Column(db.String(36), db.ForeignKey("task_columns.id"), nullable=True, index=True)
+    position      = db.Column(db.Integer, default=0, nullable=False)
     title          = db.Column(db.String(32), nullable=False)
     description_md = db.Column(db.Text, default="")
     due_at         = db.Column(db.DateTime, nullable=True)
@@ -149,6 +165,7 @@ class Task(db.Model):
     updated_at     = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     project = db.relationship("Project", back_populates="tasks")
+    column = db.relationship("TaskColumn", back_populates="tasks")
     created_by = db.relationship("User", foreign_keys=[created_by_id])
     assignments = db.relationship("TaskAssignment", back_populates="task", cascade="all, delete-orphan")
 

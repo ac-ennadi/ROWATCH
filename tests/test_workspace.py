@@ -47,6 +47,58 @@ def test_studio_tasks_are_filtered_to_authenticated_member(app):
     assert member.post(f"/api/tasks/{task_id}/complete", headers=headers, json={"completed": True}).status_code == 200
 
 
+
+def test_custom_task_board_is_shared_and_studio_stays_flat(app):
+    owner, member, _, project, members = setup_team(app)
+    base = f"/workspace/{project['id']}"
+    board = owner.get(f"{base}/tasks").get_json()
+    assert [column["name"] for column in board["columns"]] == ["Backlog", "To do", "In progress", "Done"]
+    backlog, _, _, done = board["columns"]
+
+    review_response = owner.post(f"{base}/task-columns", json={"name": "Review"})
+    assert review_response.status_code == 201
+    review = review_response.get_json()
+    renamed = owner.patch(f"{base}/task-columns/{review['id']}", json={"name": "Ready for review"})
+    assert renamed.status_code == 200
+    assert renamed.get_json()["name"] == "Ready for review"
+
+    column_ids = [review["id"], backlog["id"]] + [
+        column["id"] for column in board["columns"] if column["id"] not in (backlog["id"], done["id"])
+    ] + [done["id"]]
+    reordered = owner.put(f"{base}/task-columns/reorder", json={"column_ids": column_ids})
+    assert reordered.status_code == 200
+    assert [column["id"] for column in reordered.get_json()] == column_ids
+
+    member_id = next(item["user_id"] for item in members if item["username"] == "TeamMember")
+    first = owner.post(f"{base}/tasks", json={
+        "title": "Task A", "column_id": backlog["id"], "assignee_ids": [member_id],
+    }).get_json()
+    second = owner.post(f"{base}/tasks", json={
+        "title": "Task C", "column_id": review["id"], "assignee_ids": [member_id],
+    }).get_json()
+    moved = owner.post(f"{base}/tasks/{first['id']}/move", json={"column_id": review["id"], "position": 0})
+    assert moved.status_code == 200
+    assert moved.get_json()["column_id"] == review["id"]
+
+    refused = owner.delete(f"{base}/task-columns/{review['id']}", json={})
+    assert refused.status_code == 409
+    assert refused.get_json()["destination_required"] is True
+    deleted = owner.delete(
+        f"{base}/task-columns/{review['id']}", json={"destination_column_id": done["id"]},
+    )
+    assert deleted.status_code == 200
+    assert deleted.get_json()["moved_tasks"] == 2
+    tasks = owner.get(f"{base}/tasks").get_json()["items"]
+    assert {item["id"]: item["column_id"] for item in tasks} == {first["id"]: done["id"], second["id"]: done["id"]}
+
+    token = issue_api_key(member)
+    studio_tasks = member.get(
+        "/api/v1/tasks", headers={"X-Project-ID": project["id"], "X-API-Key": token},
+    ).get_json()
+    assert {task["title"] for task in studio_tasks} == {"Task A", "Task C"}
+    assert member.post(f"{base}/task-columns", json={"name": "Forbidden"}).status_code == 403
+    assert member.post(f"{base}/tasks/{first['id']}/move", json={"column_id": backlog["id"], "position": 0}).status_code == 403
+
 def test_members_read_docs_but_only_admins_write(app):
     owner, member, outsider, project, _ = setup_team(app)
     created = owner.post(f"/workspace/{project['id']}/documents", json={"title": "Guide", "content_md": "# Guide"})

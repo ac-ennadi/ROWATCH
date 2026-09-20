@@ -49,3 +49,14 @@ def test_registration_discloses_and_requires_tracking_consent(client):
     assert "Privacy Policy" in html and "Terms of Service" in html
     assert "does not upload script source code, record keystrokes" in html
     assert "not affiliated with, endorsed by, or sponsored by Roblox Corporation" in html
+
+
+def test_studio_integration_is_part_of_project_settings_navigation(client):
+    html = client.get("/").get_data(as_text=True)
+    javascript = client.get("/app.js").get_data(as_text=True)
+    assert 'data-panel="integration"' not in html
+    assert 'data-panel="settings"' in html
+    assert 'data-panel="settings" class="admin-only"' not in html
+    assert "Roblox Studio connection" in javascript
+    assert "Currently online" in javascript
+    assert "Last seen" in javascript

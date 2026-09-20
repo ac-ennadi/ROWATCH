@@ -19,6 +19,11 @@
     activityPage: 1,
     activitySearch: '',
     taskComposerOpen: false,
+    taskColumns: [],
+    editingTaskColumnId: null,
+    deletingTaskColumnId: null,
+    taskDragActive: false,
+    taskRefreshPending: false,
     actionConfirmResolve: null,
   };
 
@@ -238,8 +243,11 @@
       if (!state.project || update.project_id !== state.project.id) return;
       if (!['overview', 'activity', 'analytics', 'tasks', 'documents'].includes(state.panel)) return;
       clearTimeout(state.liveRefreshTimer);
-      if (update.type === 'task_updated') {
-        if (state.panel === 'tasks') state.liveRefreshTimer = setTimeout(() => loadTasks(true), 120);
+      if (update.type === 'task_updated' || update.type === 'task_board_updated') {
+        if (state.panel === 'tasks') {
+          if (state.taskDragActive) state.taskRefreshPending = true;
+          else state.liveRefreshTimer = setTimeout(() => loadTasks(true), 120);
+        }
         return;
       }
       if (update.type === 'document_updated') {
@@ -415,11 +423,11 @@
 
   async function openPanel(name) {
     if (!state.project && name !== 'account') return route('projects');
-    if (['analytics','members','settings'].includes(name) && !isAdmin()) name = 'overview';
+    if (['analytics','members'].includes(name) && !isAdmin()) name = 'overview';
     state.panel = name;
     $$('.side-nav button').forEach(button => button.classList.toggle('active', button.dataset.panel === name));
-    const titles = {overview:'Overview',activity:'Activity',tasks:'Tasks',documents:'Documentation',analytics:'Analytics',members:'Members',integration:'Studio Integration',settings:'Project Settings',account:'Account'};
-    const descriptions = {overview:`${state.project.name} development summary.`,activity:'',tasks:'Organize project work and assignments.',documents:'Project notes, setup guides, and shared references.',analytics:'Development time, code change volume, and member performance.',members:'',integration:'Connect the RoWatch plugin to this project.',settings:`Manage settings for ${state.project.name}.`,account:'Manage your RoWatch account.'};
+    const titles = {overview:'Overview',activity:'Activity',tasks:'Tasks',documents:'Documentation',analytics:'Analytics',members:'Members',settings:'Project Settings',account:'Account'};
+    const descriptions = {overview:`${state.project.name} development summary.`,activity:'',tasks:'Organize project work and assignments.',documents:'Project notes, setup guides, and shared references.',analytics:'Development time, code change volume, and member performance.',members:'',settings:`Manage settings for ${state.project.name}.`,account:'Manage your RoWatch account.'};
     el('panelTitle').textContent = name === 'members' ? '' : (titles[name] || 'Dashboard');
     el('panelDescription').textContent = descriptions[name] || '';
     el('topbarBreadcrumb').textContent = name === 'account' ? 'RoWatch / Account' : `${state.project.name} / ${titles[name]}`;
@@ -427,7 +435,7 @@
     content.innerHTML = '<div class="panel-skeleton" aria-label="Loading dashboard"><div class="skeleton-kpis"><div class="skeleton skeleton-kpi"><i></i><b></b><span></span></div><div class="skeleton skeleton-kpi"><i></i><b></b><span></span></div><div class="skeleton skeleton-kpi"><i></i><b></b><span></span></div><div class="skeleton skeleton-kpi"><i></i><b></b><span></span></div></div><div class="skeleton-panels"><div class="skeleton skeleton-panel"></div><div class="skeleton skeleton-panel"></div></div></div>';
     closeSidebar();
 
-    const loaders = {overview: loadOverview, activity: loadActivity, tasks: loadTasks, documents: loadDocuments, analytics: loadAnalytics, members: loadMembers, integration: loadIntegration, settings: loadSettings, account: loadAccountPanel};
+    const loaders = {overview: loadOverview, activity: loadActivity, tasks: loadTasks, documents: loadDocuments, analytics: loadAnalytics, members: loadMembers, settings: loadSettings, account: loadAccountPanel};
     await loaders[name]?.();
   }
 
@@ -459,7 +467,10 @@
       </div>
       <div class="dashboard-grid">
         <section class="panel-card"><div class="panel-card-head"><div><h2>Activity — last 14 days</h2><p>Completed and active sessions by day.</p></div></div><div class="chart-box"><canvas id="overviewDailyChart"></canvas></div></section>
-        <section class="panel-card"><div class="panel-card-head"><div><h2>Member sessions</h2><p>Session count by developer.</p></div></div><div class="chart-box"><canvas id="overviewMemberChart"></canvas></div></section>
+        <div class="overview-side-stack">
+          <section class="panel-card online-members-panel"><div class="panel-card-head"><div><h2>Currently online</h2><p>Active in this project now.</p></div><span class="online-count">${members.filter(member=>member.active).length}</span></div>${members.some(member=>member.active)?`<div class="online-member-list">${members.filter(member=>member.active).map(member=>`<div class="online-member"><span class="presence-dot"></span><strong>${esc(member.username)}</strong><small>${esc(roleName(member.role))}</small></div>`).join('')}</div>`:emptyInline('Nobody online','No project member has an active Studio session.')}</section>
+          <section class="panel-card"><div class="panel-card-head"><div><h2>Member sessions</h2><p>Session count by developer.</p></div></div><div class="chart-box compact-chart"><canvas id="overviewMemberChart"></canvas></div></section>
+        </div>
       </div>
       <section class="panel-card"><div class="panel-card-head"><div><h2>Recent activity</h2><p>Latest Studio activity.</p></div><button class="mini-btn" type="button" data-go-panel="activity">View all</button></div>${recent.length ? activityTable(recent) : emptyInline('No activity yet', 'Start a Studio session to populate this feed.')}</section>`;
 
@@ -562,37 +573,39 @@
     return html;
   }
 
+  function taskCardMarkup(task) {
+    const mine = task.assigned_to_me;
+    const assignees = task.assignments.map(item=>`<span class="assignee-chip ${item.completed?'done':''}">${item.completed?'✓ ':''}${esc(item.username)}</span>`).join('');
+    return `<article class="task-card ${task.my_completed?'task-done':''}" data-task-id="${esc(task.id)}" ${isAdmin()?'draggable="true"':''}><div class="task-check">${mine?`<input type="checkbox" data-task-complete="${esc(task.id)}" ${task.my_completed?'checked':''} aria-label="Complete ${esc(task.title)}"/>`:'<span>•</span>'}</div><div class="task-body"><div class="task-title-row"><h2>${esc(task.title)}</h2><span>${task.completed_count}/${task.assignments.length} complete</span></div>${task.description_md?`<div class="markdown task-markdown">${renderMarkdown(task.description_md)}</div>`:''}<div class="task-meta">${task.due_at?`<span>Due ${esc(fmtDate(task.due_at,false))}</span>`:'<span>No due date</span>'}<span>Created by ${esc(task.created_by)}</span></div><div class="assignee-chips">${assignees||'<span class="muted">Unassigned</span>'}</div></div>${isAdmin()?`<div class="task-admin-actions"><button class="icon-btn" data-edit-task="${esc(task.id)}" title="Edit task" aria-label="Edit task"><i data-lucide="pencil"></i></button><button class="icon-btn danger" data-delete-task="${esc(task.id)}" title="Delete task" aria-label="Delete task"><i data-lucide="trash-2"></i></button></div>`:''}</article>`;
+  }
+
   async function loadTasks(quiet = false) {
     const content = el('panelContent');
-    const [tasksResult, membersResult] = await Promise.all([
-      api(`/workspace/${state.project.id}/tasks`),
-      api(`/projects/${state.project.id}/members`),
-    ]);
+    const [tasksResult, membersResult] = await Promise.all([api(`/workspace/${state.project.id}/tasks`), api(`/projects/${state.project.id}/members`)]);
     if (!tasksResult.ok) return renderError(content, tasksResult.data.error);
     const tasks = tasksResult.data.items || [];
+    const columns = (tasksResult.data.columns || []).sort((a,b)=>a.position-b.position);
+    state.taskColumns = columns;
     const taskUsage = tasksResult.data.usage;
     const members = membersResult.ok ? membersResult.data : [];
-    if (state.taskAssigneeFilter !== 'all' && !members.some(member => member.user_id === state.taskAssigneeFilter)) {
-      state.taskAssigneeFilter = 'all';
-    }
-    const visibleTasks = state.taskAssigneeFilter === 'all'
-      ? tasks
-      : tasks.filter(task => task.assignments.some(item => item.user_id === state.taskAssigneeFilter));
+    if (state.taskAssigneeFilter !== 'all' && !members.some(member => member.user_id === state.taskAssigneeFilter)) state.taskAssigneeFilter = 'all';
+    const visibleTasks = state.taskAssigneeFilter === 'all' ? tasks : tasks.filter(task => task.assignments.some(item => item.user_id === state.taskAssigneeFilter));
     const editing = tasks.find(task => task.id === state.editTaskId);
     const memberChecks = members.map(member => `<label class="assignee-option"><input type="checkbox" name="taskAssignee" value="${esc(member.user_id)}" ${editing?.assignments.some(item=>item.user_id===member.user_id)?'checked':''}/><span>${esc(member.username)}</span><small>${esc(roleName(member.role))}</small></label>`).join('');
-    const editor = isAdmin() && (state.taskComposerOpen || editing) ? `<section class="panel-card task-editor"><div class="panel-card-head task-editor-head"><div><h2>${editing?'Edit task':'Create task'}</h2><p>Assign one task to one or more project members.</p></div><button id="closeTaskEditor" class="dialog-x" type="button" aria-label="Close task editor">×</button></div><div class="task-form-grid"><label>Title<input id="taskTitle" maxlength="32" value="${esc(editing?.title||'')}" placeholder="Ship inventory UI"/></label><label>Due date<input id="taskDue" type="date" value="${esc(editing?.due_at?.slice(0,10)||'')}"/></label></div><label>Description (Markdown)<textarea id="taskDescription" rows="4" placeholder="## Acceptance criteria">${esc(editing?.description_md||'')}</textarea></label><div class="assignee-help"><strong>Assign task to</strong><span>Select the checkboxes for the people responsible. You can choose multiple people.</span></div><div class="assignee-grid">${memberChecks || '<span class="muted">Add project members before assigning tasks.</span>'}</div><div class="task-actions"><button id="saveTask" class="btn btn-primary" type="button">${editing?'Save changes':'Create task'}</button><button id="cancelTaskEdit" class="btn btn-secondary" type="button">Cancel</button></div><p id="taskError" class="form-error"></p></section>` : '';
-    const cards = visibleTasks.map(task => {
-      const mine = task.assigned_to_me;
-      const assignees = task.assignments.map(item=>`<span class="assignee-chip ${item.completed?'done':''}">${item.completed?'✓ ':''}${esc(item.username)}</span>`).join('');
-      return `<article class="task-card ${task.my_completed?'task-done':''}"><div class="task-check">${mine?`<input type="checkbox" data-task-complete="${esc(task.id)}" ${task.my_completed?'checked':''} aria-label="Complete ${esc(task.title)}"/>`:'<span>•</span>'}</div><div class="task-body"><div class="task-title-row"><h2>${esc(task.title)}</h2><span>${task.completed_count}/${task.assignments.length} complete</span></div>${task.description_md?`<div class="markdown task-markdown">${renderMarkdown(task.description_md)}</div>`:''}<div class="task-meta">${task.due_at?`<span>Due ${esc(fmtDate(task.due_at,false))}</span>`:'<span>No due date</span>'}<span>Created by ${esc(task.created_by)}</span></div><div class="assignee-chips">${assignees||'<span class="muted">Unassigned</span>'}</div></div>${isAdmin()?`<div class="task-admin-actions"><button class="mini-btn" data-edit-task="${esc(task.id)}">Edit</button><button class="mini-btn danger" data-delete-task="${esc(task.id)}">Delete</button></div>`:''}</article>`;
-    }).join('');
+    const columnOptions = columns.map(column=>`<option value="${esc(column.id)}" ${(editing?.column_id||columns[0]?.id)===column.id?'selected':''}>${esc(column.name)}</option>`).join('');
+    const editor = isAdmin() && (state.taskComposerOpen || editing) ? `<section class="panel-card task-editor"><div class="panel-card-head task-editor-head"><div><h2>${editing?'Edit task':'Create task'}</h2><p>Assign one task to one or more project members.</p></div><button id="closeTaskEditor" class="dialog-x" type="button" aria-label="Close task editor">×</button></div><div class="task-form-grid"><label>Title<input id="taskTitle" maxlength="32" value="${esc(editing?.title||'')}" placeholder="Ship inventory UI"/></label><label>Column<select id="taskColumn">${columnOptions}</select></label><label>Due date<input id="taskDue" type="date" value="${esc(editing?.due_at?.slice(0,10)||'')}"/></label></div><label>Description (Markdown)<textarea id="taskDescription" rows="4" placeholder="## Acceptance criteria">${esc(editing?.description_md||'')}</textarea></label><div class="assignee-help"><strong>Assign task to</strong><span>Select the checkboxes for the people responsible. You can choose multiple people.</span></div><div class="assignee-grid">${memberChecks || '<span class="muted">Add project members before assigning tasks.</span>'}</div><div class="task-actions"><button id="saveTask" class="btn btn-primary" type="button">${editing?'Save changes':'Create task'}</button><button id="cancelTaskEdit" class="btn btn-secondary" type="button">Cancel</button></div><p id="taskError" class="form-error"></p></section>` : '';
     const filterOptions = [`<option value="all">All members</option>`, ...members.map(member => `<option value="${esc(member.user_id)}" ${state.taskAssigneeFilter===member.user_id?'selected':''}>${esc(member.username)}</option>`)].join('');
-    content.innerHTML = `<div class="toolbar task-toolbar"><div></div><div class="task-filter"><label>Filter by assignee<select id="taskAssigneeFilter">${filterOptions}</select></label>${isAdmin()?'<button id="createTaskButton" class="btn btn-primary" type="button">+ Create task</button>':''}<span class="role-box">${visibleTasks.length}/${tasks.length} shown · ${taskUsage.limit===null?'Unlimited':`${taskUsage.current}/${taskUsage.limit}`}</span></div></div><div class="task-list">${cards || emptyInline('No matching tasks', state.taskAssigneeFilter==='all'?(isAdmin()?'No tasks here. Use Create task to add one.':'Your project admins have not created tasks yet.'):'No tasks are assigned to this member.')}</div>`;
+    const board = columns.map(column=>{
+      const cards=visibleTasks.filter(task=>task.column_id===column.id).sort((a,b)=>a.position-b.position).map(taskCardMarkup).join('');
+      return `<section class="task-column" data-column-id="${esc(column.id)}" ${isAdmin()?'draggable="true"':''}><header class="task-column-head"><div class="task-column-title">${isAdmin()?'<i class="column-grip" data-lucide="grip-vertical"></i>':''}<strong>${esc(column.name)}</strong><span>${column.task_count}</span></div>${isAdmin()?`<div class="column-actions"><button class="icon-btn" data-rename-column="${esc(column.id)}" title="Rename column" aria-label="Rename ${esc(column.name)}"><i data-lucide="pencil"></i></button><button class="icon-btn danger" data-delete-column="${esc(column.id)}" title="Delete column" aria-label="Delete ${esc(column.name)}"><i data-lucide="trash-2"></i></button></div>`:''}</header><div class="task-column-list" data-column-drop="${esc(column.id)}">${cards||'<div class="column-empty">Drop tasks here</div>'}</div></section>`;
+    }).join('');
+    content.innerHTML = `<div class="toolbar task-toolbar"><div></div><div class="task-filter"><label>Filter by assignee<select id="taskAssigneeFilter">${filterOptions}</select></label>${isAdmin()?'<button id="addTaskColumnButton" class="btn btn-secondary" type="button"><i data-lucide="columns-3"></i> Add column</button><button id="createTaskButton" class="btn btn-primary" type="button">+ Create task</button>':''}<span class="role-box">${visibleTasks.length}/${tasks.length} shown · ${taskUsage.limit===null?'Unlimited':`${taskUsage.current}/${taskUsage.limit}`}</span></div></div><div id="taskBoard" class="task-board">${board}</div>`;
     const taskDialog = el('taskEditorDialog');
     el('taskDialogContent').innerHTML = editor;
     if (editor && !taskDialog.open) taskDialog.showModal();
     if (!editor && taskDialog.open) taskDialog.close();
     el('createTaskButton')?.addEventListener('click',()=>{state.editTaskId=null;state.taskComposerOpen=true;loadTasks(true);});
+    el('addTaskColumnButton')?.addEventListener('click',()=>openTaskColumnDialog());
     el('taskAssigneeFilter').value = state.taskAssigneeFilter;
     el('taskAssigneeFilter').addEventListener('change', event => { state.taskAssigneeFilter=event.target.value; loadTasks(true); });
     el('saveTask')?.addEventListener('click', saveTask);
@@ -601,7 +614,80 @@
     $$('[data-task-complete]',content).forEach(node=>node.addEventListener('change',()=>toggleTask(node.dataset.taskComplete,node.checked)));
     $$('[data-edit-task]',content).forEach(node=>node.addEventListener('click',()=>{state.editTaskId=node.dataset.editTask;state.taskComposerOpen=true;loadTasks();}));
     $$('[data-delete-task]',content).forEach(node=>node.addEventListener('click',()=>deleteTask(node.dataset.deleteTask)));
+    $$('[data-rename-column]',content).forEach(node=>node.addEventListener('click',()=>openTaskColumnDialog(columns.find(column=>column.id===node.dataset.renameColumn))));
+    $$('[data-delete-column]',content).forEach(node=>node.addEventListener('click',()=>openDeleteTaskColumn(node.dataset.deleteColumn)));
+    if (isAdmin()) wireTaskBoardDrag();
+    window.lucide?.createIcons();
   }
+
+  function openTaskColumnDialog(column = null) {
+    state.editingTaskColumnId = column?.id || null;
+    el('taskColumnDialogTitle').textContent = column ? 'Rename column' : 'New column';
+    el('taskColumnName').value = column?.name || '';
+    el('taskColumnError').textContent = '';
+    el('taskColumnSubmit').textContent = column ? 'Save name' : 'Create column';
+    el('taskColumnDialog').showModal();
+    setTimeout(()=>el('taskColumnName').focus(),0);
+  }
+
+  async function saveTaskColumn(event) {
+    event.preventDefault();
+    const name=el('taskColumnName').value.trim();
+    const path=state.editingTaskColumnId?`/workspace/${state.project.id}/task-columns/${state.editingTaskColumnId}`:`/workspace/${state.project.id}/task-columns`;
+    const result=await api(path,{method:state.editingTaskColumnId?'PATCH':'POST',body:JSON.stringify({name})});
+    if(!result.ok)return el('taskColumnError').textContent=result.data.error||'Could not save column.';
+    el('taskColumnDialog').close(); state.editingTaskColumnId=null; toast('Column saved'); await loadTasks(true);
+  }
+
+  function openDeleteTaskColumn(columnId) {
+    const column=state.taskColumns.find(item=>item.id===columnId);
+    if(!column)return;
+    state.deletingTaskColumnId=columnId;
+    el('deleteTaskColumnMessage').textContent=column.task_count?`${column.task_count} task${column.task_count===1?'':'s'} will be moved before “${column.name}” is deleted.`:`“${column.name}” is empty and can be deleted safely.`;
+    const destinations=state.taskColumns.filter(item=>item.id!==columnId);
+    el('deleteTaskColumnDestinationWrap').hidden=!column.task_count;
+    el('deleteTaskColumnDestination').innerHTML=destinations.map(item=>`<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('');
+    el('deleteTaskColumnError').textContent='';
+    el('deleteTaskColumnSubmit').textContent=column.task_count?'Move tasks and delete':'Delete column';
+    el('deleteTaskColumnDialog').showModal();
+  }
+
+  async function deleteTaskColumn(event) {
+    event.preventDefault();
+    const column=state.taskColumns.find(item=>item.id===state.deletingTaskColumnId);
+    const payload=column?.task_count?{destination_column_id:el('deleteTaskColumnDestination').value}:{};
+    const result=await api(`/workspace/${state.project.id}/task-columns/${state.deletingTaskColumnId}`,{method:'DELETE',body:JSON.stringify(payload)});
+    if(!result.ok)return el('deleteTaskColumnError').textContent=result.data.error||'Could not delete column.';
+    el('deleteTaskColumnDialog').close(); state.deletingTaskColumnId=null; toast(result.data.moved_tasks?'Tasks moved and column deleted':'Column deleted'); await loadTasks(true);
+  }
+
+  function animateBoardMove(container, item, before) {
+    const nodes=[...container.children].filter(node=>node!==item && !node.classList.contains('column-empty'));
+    const previous=new Map(nodes.map(node=>[node,node.getBoundingClientRect()]));
+    container.insertBefore(item,before || null);
+    nodes.forEach(node=>{const old=previous.get(node),now=node.getBoundingClientRect();const x=old.left-now.left,y=old.top-now.top;if(x||y)node.animate([{transform:`translate(${x}px,${y}px)`},{transform:'translate(0,0)'}],{duration:220,easing:'cubic-bezier(.2,.8,.2,1)'});});
+  }
+
+  function wireTaskBoardDrag() {
+    const board=el('taskBoard');
+    let draggedTask=null,draggedColumn=null;
+    $$('.task-card',board).forEach(card=>card.addEventListener('dragstart',event=>{event.stopPropagation();draggedTask=card;state.taskDragActive=true;card.classList.add('dragging');event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',card.dataset.taskId);}));
+    $$('.task-column',board).forEach(column=>{
+      column.addEventListener('dragstart',event=>{if(draggedTask||event.target.closest('.task-card'))return;draggedColumn=column;state.taskDragActive=true;column.classList.add('dragging-column');event.dataTransfer.effectAllowed='move';});
+      column.addEventListener('dragend',()=>{column.classList.remove('dragging-column');draggedColumn=null;finishTaskDrag();});
+    });
+    board.addEventListener('dragover',event=>{if(!draggedColumn||draggedTask)return;event.preventDefault();const siblings=$$('.task-column:not(.dragging-column)',board);const before=siblings.find(node=>event.clientX<node.getBoundingClientRect().left+node.offsetWidth/2);animateBoardMove(board,draggedColumn,before);});
+    board.addEventListener('drop',async event=>{if(!draggedColumn||draggedTask)return;event.preventDefault();const ids=$$('.task-column',board).map(node=>node.dataset.columnId);const result=await api(`/workspace/${state.project.id}/task-columns/reorder`,{method:'PUT',body:JSON.stringify({column_ids:ids})});if(!result.ok)toast(result.data.error||'Could not reorder columns.');await loadTasks(true);});
+    $$('[data-column-drop]',board).forEach(list=>{
+      list.addEventListener('dragenter',event=>{if(draggedTask){event.preventDefault();list.classList.add('drop-active');}});
+      list.addEventListener('dragleave',event=>{if(!list.contains(event.relatedTarget))list.classList.remove('drop-active');});
+      list.addEventListener('dragover',event=>{if(!draggedTask)return;event.preventDefault();event.dataTransfer.dropEffect='move';const empty=$('.column-empty',list);empty?.remove();const siblings=$$('.task-card:not(.dragging)',list);const before=siblings.find(node=>event.clientY<node.getBoundingClientRect().top+node.offsetHeight/2);animateBoardMove(list,draggedTask,before);});
+      list.addEventListener('drop',async event=>{if(!draggedTask)return;event.preventDefault();event.stopPropagation();list.classList.remove('drop-active');const taskId=draggedTask.dataset.taskId,columnId=list.dataset.columnDrop,position=$$('.task-card',list).indexOf(draggedTask);const result=await api(`/workspace/${state.project.id}/tasks/${taskId}/move`,{method:'POST',body:JSON.stringify({column_id:columnId,position})});if(!result.ok)toast(result.data.error||'Could not move task.');else toast('Task moved');await loadTasks(true);});
+    });
+    $$('.task-card',board).forEach(card=>card.addEventListener('dragend',()=>{card.classList.remove('dragging');$$('.drop-active',board).forEach(node=>node.classList.remove('drop-active'));draggedTask=null;finishTaskDrag();}));
+  }
+
+  function finishTaskDrag(){state.taskDragActive=false;if(state.taskRefreshPending){state.taskRefreshPending=false;loadTasks(true);}}
 
   function closeTaskEditor() {
     state.editTaskId = null;
@@ -613,7 +699,7 @@
   async function saveTask() {
     const title = el('taskTitle').value.trim();
     const assignee_ids = $$('input[name="taskAssignee"]:checked').map(node=>node.value);
-    const payload = {title, description_md:el('taskDescription').value, due_at:el('taskDue').value||null, assignee_ids};
+    const payload = {title, column_id:el('taskColumn').value, description_md:el('taskDescription').value, due_at:el('taskDue').value||null, assignee_ids};
     const path = state.editTaskId ? `/workspace/${state.project.id}/tasks/${state.editTaskId}` : `/workspace/${state.project.id}/tasks`;
     const result = await api(path,{method:state.editTaskId?'PATCH':'POST',body:JSON.stringify(payload)});
     if(!result.ok) return el('taskError').textContent=result.data.error||'Could not save task.';
@@ -758,7 +844,7 @@
     if (!ok) return renderError(content, data.error);
     content.innerHTML = `
       <div class="toolbar"><div><h2>Project members</h2><p>${data.length} member${data.length === 1 ? '' : 's'} currently have project access.</p></div><button id="inviteMemberButton" class="btn btn-primary" type="button">+ Invite member</button></div>
-      <div class="data-table-wrap"><table class="data-table"><thead><tr><th>User</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead><tbody>${data.map(m => `<tr><td><strong>${esc(m.username)}</strong></td><td><span class="role-box">${esc(roleName(m.role))}</span></td><td>${esc(fmtDate(m.joined_at,false))}</td><td>${memberActions(m)}</td></tr>`).join('')}</tbody></table></div>`;
+      <div class="data-table-wrap"><table class="data-table"><thead><tr><th>User</th><th>Role</th><th>Presence</th><th>Joined</th><th>Actions</th></tr></thead><tbody>${data.map(m => `<tr><td><strong>${esc(m.username)}</strong></td><td><span class="role-box">${esc(roleName(m.role))}</span></td><td>${m.active?'<span class="member-presence online"><i></i>Online</span>':m.last_seen?`<span class="member-presence"><i></i>Last seen ${esc(fmtDate(m.last_seen))}</span>`:'<span class="member-presence"><i></i>Offline</span>'}</td><td>${esc(fmtDate(m.joined_at,false))}</td><td>${memberActions(m)}</td></tr>`).join('')}</tbody></table></div>`;
     el('inviteMemberButton').addEventListener('click', () => { el('inviteUsername').value=''; el('inviteError').textContent=''; el('inviteDialog').showModal(); });
     $$('[data-member-role]', content).forEach(b => b.addEventListener('click', () => changeMemberRole(b.dataset.userId, b.dataset.memberRole)));
     $$('[data-member-remove]', content).forEach(b => b.addEventListener('click', () => removeMember(b.dataset.userId, b.dataset.username)));
@@ -792,20 +878,13 @@
     toast(`${username} removed`); await loadMembers();
   }
 
-  async function loadIntegration() {
-    const content = el('panelContent');
-    content.innerHTML = `
-      <div class="settings-stack">
-        <section class="settings-row"><h2>Roblox Studio connection</h2><p>Studio authenticates as your RoWatch account and loads every project you belong to.</p><div class="dialog-actions integration-actions"><a class="btn btn-primary" href="https://create.roblox.com/store/asset/92589984687196/RoWatch-Beta" target="_blank" rel="noopener noreferrer">Install RoWatch from Creator Store</a></div><ol class="setup-list"><li><strong>Install the plugin</strong> from the Roblox Creator Store using the button above.</li><li><strong>Allow HTTP Requests</strong> in Roblox Studio game settings.</li><li><strong>Open Account</strong> on this website and copy your Studio API key.</li><li><strong>Paste the API key</strong> into the plugin and select this project.</li><li><strong>Start a session</strong> before working and end it when you are done.</li></ol></section>
-        <section class="settings-row"><h2>Access control</h2><p>The plugin can select this project only while the API-key owner is a project member. Removing a member immediately removes their access.</p></section>
-      </div>`;
-  }
-
   async function loadSettings() {
     const content = el('panelContent');
     const p = state.project;
     content.innerHTML = `
       <div class="settings-stack">
+        <section class="settings-row"><h2>Roblox Studio connection</h2><p>Studio authenticates as your RoWatch account and loads every project you belong to.</p><div class="dialog-actions integration-actions"><a class="btn btn-primary" href="https://create.roblox.com/store/asset/92589984687196/RoWatch-Beta" target="_blank" rel="noopener noreferrer">Install RoWatch from Creator Store</a></div><ol class="setup-list"><li><strong>Install the plugin</strong> from the Roblox Creator Store using the button above.</li><li><strong>Allow HTTP Requests</strong> in Roblox Studio game settings.</li><li><strong>Open Account</strong> and copy your Studio API key.</li><li><strong>Paste the API key</strong> into the plugin and select this project.</li><li><strong>Start a session</strong> before working and end it when you are done.</li></ol></section>
+        <section class="settings-row"><h2>Access control</h2><p>The plugin can select this project only while the API-key owner is a project member. Removing a member immediately removes their access.</p></section>
         <section class="settings-row"><h2>Project details</h2><p>${isOwner() ? 'Rename the project. Changes are visible to every member.' : 'Only the project owner can rename this project.'}</p><div class="key-line"><input id="projectNameInput" maxlength="32" value="${esc(p.name)}" ${isOwner() ? '' : 'readonly'}/>${isOwner() ? '<button id="saveProjectName" class="btn btn-primary" type="button">Save</button>' : ''}</div></section>
         ${isOwner() ? '<section class="settings-row danger-zone"><h2>Delete project</h2><p>Permanently deletes this project, its memberships, sessions, and script events.</p><button id="deleteProject" class="btn btn-danger" type="button">Delete project</button></section>' : ''}
       </div>`;
@@ -1101,6 +1180,8 @@
     el('inviteForm').addEventListener('submit', inviteMember);
     el('checkoutForm').addEventListener('submit', checkout);
     el('documentTitleForm').addEventListener('submit', createDocument);
+    el('taskColumnForm').addEventListener('submit', saveTaskColumn);
+    el('deleteTaskColumnForm').addEventListener('submit', deleteTaskColumn);
     el('actionConfirmForm').addEventListener('submit',event=>{
       event.preventDefault();
       const expected=el('actionConfirmPhrase').dataset.expected||'';

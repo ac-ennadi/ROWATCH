@@ -54,6 +54,7 @@ def create_app(test_config=None):
         db.create_all()
         ensure_tracking_consent_columns()
         ensure_document_editor_column()
+        ensure_task_board_schema()
         migrate_legacy_project_plans()
         bootstrap_admin_account()
 
@@ -106,6 +107,30 @@ def ensure_tracking_consent_columns():
     if "tracking_consent_version" not in columns:
         db.session.execute(text("ALTER TABLE users ADD COLUMN tracking_consent_version VARCHAR(32)"))
     db.session.commit()
+
+def ensure_task_board_schema():
+    """Add board metadata and seed defaults for databases created before columns."""
+    task_columns = {column["name"] for column in inspect(db.engine).get_columns("tasks")}
+    if "column_id" not in task_columns:
+        db.session.execute(text("ALTER TABLE tasks ADD COLUMN column_id VARCHAR(36)"))
+    if "position" not in task_columns:
+        db.session.execute(text("ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0"))
+    db.session.commit()
+
+    from models import Project, Task, TaskColumn
+    defaults = ("Backlog", "To do", "In progress", "Done")
+    for project in Project.query.all():
+        columns = TaskColumn.query.filter_by(project_id=project.id).order_by(TaskColumn.position).all()
+        if not columns:
+            columns = [TaskColumn(project_id=project.id, name=name, position=index) for index, name in enumerate(defaults)]
+            db.session.add_all(columns)
+            db.session.flush()
+        unplaced = Task.query.filter_by(project_id=project.id, column_id=None).order_by(Task.created_at).all()
+        for index, task_item in enumerate(unplaced):
+            task_item.column_id = columns[0].id
+            task_item.position = index
+    db.session.commit()
+
 
 def ensure_document_editor_column():
     """Add last-editor attribution to databases created before this field existed."""
