@@ -74,6 +74,20 @@ docker run --name rowatch -p 5000:5000 \
   rowatch
 ```
 
+## Account and Studio authentication
+
+Users register and sign in with an email address and password. The Account screen
+creates a 64-character API key that can be pasted into the Studio plugin. The plugin
+then fetches every project that account belongs to and lets the user select one.
+
+The raw API key is shown only when it is first created or regenerated; the server stores
+only its SHA-256 hash. Regenerating it invalidates the previous key immediately. Studio
+activity is attributed to the account that owns the key, so Roblox usernames and shared
+project keys are not used for authentication.
+
+The static administrator account is configured with `ROWATCH_ADMIN_USERNAME`,
+`ROWATCH_ADMIN_EMAIL`, and `ROWATCH_ADMIN_PASSWORD`.
+
 ## User pipeline
 
 ```text
@@ -102,6 +116,9 @@ Landing
 - `POST /auth/logout`
 - `GET /auth/me`
 - `PATCH /auth/me`
+- `PUT /auth/password`
+- `GET/POST /auth/api-key`
+- `POST /auth/api-key/regenerate`
 
 ### Projects
 - `GET /projects/`
@@ -130,8 +147,8 @@ Landing
 All plugin endpoints require:
 
 ```http
-X-Project-Key: <project key>
-X-Username: <rowatch username>
+X-API-Key: <account API key>
+X-Project-ID: <selected project ID>
 ```
 
 Routes:
@@ -150,9 +167,9 @@ Session starts, heartbeats, script changes, and part/UI changes refresh the acti
 Overview, Activity, or Analytics panel automatically. The default Docker setup uses
 one Gunicorn worker so the in-process live event channel works without Redis.
 
-The Studio plugin stores multiple validated project profiles in plugin settings.
-Use **Add Project** once per project, then start future sessions from its project
-button. Tracking runs only during an active session and records `BasePart` plus
+The Studio plugin stores the account API key and its fetched project list in plugin
+settings. Select a project button to start a session, or refresh memberships after an
+invite or removal. Tracking runs only during an active session and records `BasePart` plus
 `GuiObject`/`LayerCollector` additions and removals.
 
 
@@ -162,7 +179,7 @@ API and shown in the workspace UI.
 
 Tasks can be assigned to multiple members. Each assignment has its own completion
 state, so shared work remains open for every member who has not checked it off. The
-Studio plugin shows only tasks assigned to the saved profile username and allows
+Studio plugin shows only tasks assigned to the authenticated account and allows
 that member to complete or reopen them.
 
 Documentation supports multiple Markdown pages with a live rendered preview. All

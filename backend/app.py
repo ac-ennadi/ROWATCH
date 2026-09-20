@@ -27,7 +27,7 @@ def create_app(test_config=None):
 
     with app.app_context():
         from blueprints.auth import auth_bp
-        from blueprints.projects import projects_bp
+        from blueprints.projects import plugin_projects_bp, projects_bp
         from blueprints.events import events_bp
         from blueprints.dashboard import dashboard_bp
         from blueprints.payments import payments_bp
@@ -35,6 +35,7 @@ def create_app(test_config=None):
 
         app.register_blueprint(auth_bp)
         app.register_blueprint(projects_bp)
+        app.register_blueprint(plugin_projects_bp)
         app.register_blueprint(events_bp)
         app.register_blueprint(dashboard_bp)
         app.register_blueprint(payments_bp)

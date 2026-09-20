@@ -1,11 +1,11 @@
 from flask import Blueprint, request, jsonify, g
 from models import db, Project, ProjectMember, User
-from utils import login_required, project_access
+from utils import account_api_key_required, login_required, project_access
 from config import PLAN_LIMITS
-from datetime import datetime
 
 
 projects_bp = Blueprint("projects", __name__, url_prefix="/projects")
+plugin_projects_bp = Blueprint("plugin_projects", __name__, url_prefix="/api/plugin")
 
 
 def project_to_dict(p, member=None):
@@ -19,6 +19,21 @@ def project_to_dict(p, member=None):
         "member_count": len(p.members),
         "role": member.role if member else None,
     }
+
+
+@plugin_projects_bp.route("/projects", methods=["GET"])
+@account_api_key_required
+def plugin_projects():
+    memberships = ProjectMember.query.filter_by(user_id=g.user.id).all()
+    return jsonify({
+        "username": g.user.username,
+        "projects": [{
+            "id": membership.project.id,
+            "name": membership.project.name,
+            "role": membership.role,
+            "plan": membership.project.effective_plan,
+        } for membership in memberships],
+    })
 
 
 @projects_bp.route("/", methods=["GET"])
@@ -50,16 +65,13 @@ def create_project():
     db.session.add(ProjectMember(project_id=project.id, user_id=g.user.id, role="owner"))
     db.session.commit()
     owner_member = ProjectMember.query.filter_by(project_id=project.id, user_id=g.user.id).first()
-    return jsonify({**project_to_dict(project, owner_member), "project_key": project.project_key}), 201
+    return jsonify(project_to_dict(project, owner_member)), 201
 
 
 @projects_bp.route("/<project_id>", methods=["GET"])
 @project_access()
 def get_project(project_id):
-    data = project_to_dict(g.project, g.member)
-    if g.member.role in ("owner", "co_admin"):
-        data["project_key"] = g.project.project_key
-    return jsonify(data)
+    return jsonify(project_to_dict(g.project, g.member))
 
 
 @projects_bp.route("/<project_id>", methods=["PATCH"])
@@ -74,16 +86,6 @@ def update_project(project_id):
     g.project.name = name
     db.session.commit()
     return jsonify({"ok": True, "name": name})
-
-
-@projects_bp.route("/<project_id>/key", methods=["POST"])
-@project_access(role_required="owner")
-def regenerate_key(project_id):
-    from models import gen_key
-    g.project.project_key = gen_key()
-    g.project.key_regenerated_at = datetime.utcnow()
-    db.session.commit()
-    return jsonify({"project_key": g.project.project_key})
 
 
 @projects_bp.route("/<project_id>/members", methods=["GET"])

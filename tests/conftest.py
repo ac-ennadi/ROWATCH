@@ -36,7 +36,7 @@ def register(client, username, email=None):
     return client.post("/auth/register", json={
         "username": username,
         "email": email or f"{username.lower()}@example.test",
-        "password": "secret1",
+        "password": "secret123",
     })
 
 
@@ -73,3 +73,15 @@ def issue_code(code_admin):
         assert response.status_code == 201, response.get_json()
         return response.get_json()["codes"][0]["code"]
     return issue
+
+
+
+def issue_api_key(client):
+    response = client.post("/auth/api-key", json={})
+    assert response.status_code in (200, 201), response.get_json()
+    raw = response.get_json().get("api_key")
+    if not raw:
+        regenerated = client.post("/auth/api-key/regenerate", json={})
+        assert regenerated.status_code == 200
+        raw = regenerated.get_json()["api_key"]
+    return raw

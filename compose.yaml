@@ -17,6 +17,7 @@ services:
       ROWATCH_ADMIN_USERNAME: "${ROWATCH_ADMIN_USERNAME:-}"
       ROWATCH_ADMIN_EMAIL: "${ROWATCH_ADMIN_EMAIL:-}"
       ROWATCH_ADMIN_PASSWORD: "${ROWATCH_ADMIN_PASSWORD:-}"
+      ROWATCH_SESSION_DAYS: "${ROWATCH_SESSION_DAYS:-7}"
     volumes:
       - rowatch_data:/app/instance
     healthcheck:

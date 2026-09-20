@@ -81,8 +81,8 @@
           <article><span class="feature-icon">02</span><div><h3>Code change tracking</h3><p>See characters added and removed, plus script open and close activity.</p></div></article>
           <article><span class="feature-icon">03</span><div><h3>Readable analytics</h3><p>Compare team activity by day, member, session, and total development time.</p></div></article>
           <article><span class="feature-icon">04</span><div><h3>Team management</h3><p>Invite members, assign co-admins, and keep project access controlled.</p></div></article>
-          <article><span class="feature-icon">05</span><div><h3>Studio integration</h3><p>Connect the plugin with a project key and your RoWatch username.</p></div></article>
-          <article><span class="feature-icon">06</span><div><h3>Project-level privacy</h3><p>Every Studio request is checked against the project key and membership.</p></div></article>
+          <article><span class="feature-icon">05</span><div><h3>Studio integration</h3><p>Paste your account API key once, then select any project you belong to.</p></div></article>
+          <article><span class="feature-icon">06</span><div><h3>Project-level privacy</h3><p>Every Studio request is checked against the API-key account and project membership.</p></div></article>
         </div>
       </section>
 
@@ -91,7 +91,7 @@
           <div class="section-heading"><p class="eyebrow">HOW IT WORKS</p><h2>From Studio session to dashboard.</h2><p>One setup step, then the tracking runs alongside normal development.</p></div>
           <ol class="steps">
             <li><span>1</span><div><strong>Create a project</strong><p>Log in, create a RoWatch project, and open its Studio Integration page.</p></div></li>
-            <li><span>2</span><div><strong>Connect Roblox Studio</strong><p>Paste your username and project key into the RoWatch plugin.</p></div></li>
+            <li><span>2</span><div><strong>Connect Roblox Studio</strong><p>Copy your account API key into the plugin and select a fetched project.</p></div></li>
             <li><span>3</span><div><strong>Work normally</strong><p>Start a session. RoWatch records session and script activity while you develop.</p></div></li>
             <li><span>4</span><div><strong>Review progress</strong><p>Use Overview, Activity, and Analytics to understand how the project is moving.</p></div></li>
           </ol>
@@ -124,7 +124,7 @@
 
     <section id="view-login" class="view auth-view">
       <div class="auth-shell">
-        <button class="text-link back-link" type="button" data-route="home">← Back to RoWatch</button>
+        <button class="text-link back-link" type="button" data-route="home">Back to RoWatch</button>
         <div class="auth-card">
           <a class="brand" href="#" data-route="home"><span class="brand-mark">R</span><span>RoWatch</span></a>
           <div><h1>Log in</h1><p>Continue to your projects.</p></div>
@@ -141,14 +141,14 @@
 
     <section id="view-register" class="view auth-view">
       <div class="auth-shell">
-        <button class="text-link back-link" type="button" data-route="home">← Back to RoWatch</button>
+        <button class="text-link back-link" type="button" data-route="home">Back to RoWatch</button>
         <div class="auth-card">
           <a class="brand" href="#" data-route="home"><span class="brand-mark">R</span><span>RoWatch</span></a>
-          <div><h1>Create your account</h1><p>Start with one free project.</p></div>
+          <div><h1>Create your account</h1><p>Your account API key will connect Roblox Studio securely.</p></div>
           <form id="registerForm">
             <label>Username<input id="regUser" autocomplete="username" minlength="3" required /></label>
             <label>Email<input id="regEmail" type="email" autocomplete="email" required /></label>
-            <label>Password<input id="regPw" type="password" autocomplete="new-password" minlength="6" required /></label>
+            <label>Password<input id="regPw" type="password" autocomplete="new-password" minlength="8" required /></label>
             <p id="registerError" class="form-error"></p>
             <button class="btn btn-primary full" type="submit">Create account</button>
           </form>

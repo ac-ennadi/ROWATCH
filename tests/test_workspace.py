@@ -1,4 +1,4 @@
-from conftest import register
+from conftest import issue_api_key, register
 from config import PLAN_LIMITS
 
 
@@ -38,7 +38,8 @@ def test_studio_tasks_are_filtered_to_authenticated_member(app):
     owner_id = next(item["user_id"] for item in members if item["username"] == "TeamOwner")
     owner.post(f"/workspace/{project['id']}/tasks", json={"title": "Member only", "assignee_ids": [member_id]})
     owner.post(f"/workspace/{project['id']}/tasks", json={"title": "Owner only", "assignee_ids": [owner_id]})
-    headers = {"X-Project-Key": project["project_key"], "X-Username": "TeamMember"}
+    token = issue_api_key(member)
+    headers = {"X-Project-ID": project["id"], "X-API-Key": token}
     tasks = member.get("/api/tasks", headers=headers).get_json()
     assert [task["title"] for task in tasks] == ["Member only"]
     task_id = tasks[0]["id"]

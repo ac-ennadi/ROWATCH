@@ -176,6 +176,18 @@ class ProjectDocument(db.Model):
     created_by = db.relationship("User", foreign_keys=[created_by_id])
 
 
+class AccountApiKey(db.Model):
+    __tablename__ = "account_api_keys"
+    user_id = db.Column(db.String(36), db.ForeignKey("users.id"), primary_key=True)
+    key_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    key_prefix = db.Column(db.String(12), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    regenerated_at = db.Column(db.DateTime, nullable=True)
+    last_used_at = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship("User")
+
+
 class AccountSubscription(db.Model):
     __tablename__ = "account_subscriptions"
     user_id       = db.Column(db.String(36), db.ForeignKey("users.id"), primary_key=True)

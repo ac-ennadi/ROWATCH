@@ -2,13 +2,14 @@ import jwt
 import functools
 from datetime import datetime, timedelta
 from flask import request, jsonify, g, current_app
-from models import User, Project, ProjectMember, db
+from models import AccountApiKey, User, Project, ProjectMember, db
+import hashlib
 
 def create_token(user_id):
     payload = {
         "sub": user_id,
         "iat": datetime.utcnow(),
-        "exp": datetime.utcnow() + timedelta(days=7),
+        "exp": datetime.utcnow() + current_app.config["JWT_EXPIRY"],
     }
     return jwt.encode(payload, current_app.config["JWT_SECRET"], algorithm="HS256")
 
@@ -47,28 +48,53 @@ def admin_required(f):
         return f(*args, **kwargs)
     return wrapper
 
-def plugin_auth(f):
-    """Authenticate plugin requests via X-Project-Key + X-Username headers."""
+def _account_from_api_key():
+    raw_key = request.headers.get("X-API-Key", "")
+    if not raw_key:
+        return None
+    record = AccountApiKey.query.filter_by(
+        key_hash=hashlib.sha256(raw_key.encode()).hexdigest()
+    ).first()
+    if not record:
+        return None
+    record.last_used_at = datetime.utcnow()
+    db.session.commit()
+    return record.user
+
+
+def account_api_key_required(f):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
-        key      = request.headers.get("X-Project-Key")
-        username = request.headers.get("X-Username")
-        if not key or not username:
-            return jsonify({"error": "Missing X-Project-Key or X-Username"}), 401
-        project = Project.query.filter_by(project_key=key).first()
-        if not project:
-            return jsonify({"error": "Invalid project key"}), 401
-        user = User.query.filter_by(username=username).first()
+        user = _account_from_api_key()
         if not user:
-            return jsonify({"error": "Unknown username"}), 401
-        member = ProjectMember.query.filter_by(project_id=project.id, user_id=user.id).first()
-        if not member:
-            return jsonify({"error": "Not a member of this project"}), 403
-        g.project = project
-        g.user    = user
-        g.member  = member
+            return jsonify({"error": "Invalid or missing account API key", "api_key_required": True}), 401
+        g.user = user
         return f(*args, **kwargs)
     return wrapper
+
+
+def plugin_auth(f):
+    """Authenticate Studio by account API key and selected project membership."""
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        user = _account_from_api_key()
+        project_id = request.headers.get("X-Project-ID")
+        if not user:
+            return jsonify({"error": "Invalid or missing account API key", "api_key_required": True}), 401
+        if not project_id:
+            return jsonify({"error": "Missing selected project ID"}), 400
+        project = db.session.get(Project, project_id)
+        if not project:
+            return jsonify({"error": "Project not found"}), 404
+        member = ProjectMember.query.filter_by(project_id=project.id, user_id=user.id).first()
+        if not member:
+            return jsonify({"error": "Your account is not a member of this project"}), 403
+        g.project = project
+        g.user = user
+        g.member = member
+        return f(*args, **kwargs)
+    return wrapper
+
 
 def project_access(role_required=None):
     """Decorator for web routes that need project access."""

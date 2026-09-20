@@ -1,20 +1,19 @@
 from realtime import socketio
-
-
-def plugin_headers(project):
-    return {"X-Project-Key": project["project_key"], "X-Username": "Owner"}
+from conftest import issue_api_key
 
 
 def test_plugin_auth_rejects_bad_key(registered_client):
+    token = issue_api_key(registered_client)
     response = registered_client.get("/api/events/ping", headers={
-        "X-Project-Key": "bad", "X-Username": "Owner",
+        "X-Project-ID": "bad", "X-API-Key": token,
     })
-    assert response.status_code == 401
-    assert response.get_json()["error"] == "Invalid project key"
+    assert response.status_code == 404
+    assert response.get_json()["error"] == "Project not found"
 
 
 def test_studio_session_script_and_instance_stats(registered_client, project):
-    headers = plugin_headers(project)
+    token = issue_api_key(registered_client)
+    headers = {"X-Project-ID": project["id"], "X-API-Key": token}
     session_id = registered_client.post("/api/events/session/start", headers=headers).get_json()["session_id"]
     assert registered_client.post("/api/events/script/open", headers=headers, json={"session_id": session_id, "script": "Workspace.Main"}).status_code == 200
     closed = registered_client.post("/api/events/script/close", headers=headers, json={
@@ -40,13 +39,14 @@ def test_studio_session_script_and_instance_stats(registered_client, project):
 
 
 def test_authenticated_socket_room_receives_project_updates(app, registered_client, project):
+    token = issue_api_key(registered_client)
     socket_client = socketio.test_client(app, flask_test_client=registered_client)
     assert socket_client.is_connected()
     socket_client.emit("join_project", {"project_id": project["id"]})
     joined = socket_client.get_received()
     assert any(item["name"] == "project_joined" and item["args"][0]["ok"] for item in joined)
 
-    response = registered_client.post("/api/events/session/start", headers=plugin_headers(project))
+    response = registered_client.post("/api/events/session/start", headers={"X-Project-ID": project["id"], "X-API-Key": token})
     assert response.status_code == 200
     updates = socket_client.get_received()
     assert any(item["name"] == "project_update" and item["args"][0]["type"] == "session_started" for item in updates)

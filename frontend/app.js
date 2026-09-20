@@ -242,15 +242,20 @@
     event.preventDefault();
     const error = el('registerError');
     error.textContent = '';
-    const {ok, data} = await api('/auth/register', {
+    const result = await api('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({username: el('regUser').value.trim(), email: el('regEmail').value.trim(), password: el('regPw').value}),
+      body: JSON.stringify({
+        username: el('regUser').value.trim(),
+        email: el('regEmail').value.trim(),
+        password: el('regPw').value,
+      }),
     });
-    if (!ok) return error.textContent = data.error || 'Registration failed.';
+    if (!result.ok) return error.textContent = result.data.error || 'Registration failed.';
     await checkAuth();
     connectLiveUpdates();
     await route('projects');
   }
+
 
   async function logout() {
     await api('/auth/logout', {method: 'POST'});
@@ -659,14 +664,11 @@
 
   async function loadIntegration() {
     const content = el('panelContent');
-    const key = state.project.project_key;
     content.innerHTML = `
       <div class="settings-stack">
-        <section class="settings-row"><h2>Roblox Studio connection</h2><p>Use the RoWatch plugin to connect Studio activity to this project.</p><ol class="setup-list"><li><strong>Install the plugin.</strong> Use <code class="mono">plugin/RoWatch.lua</code> from this package.</li><li><strong>Allow HTTP Requests</strong> in Roblox Studio game settings.</li><li><strong>Set the server URL</strong> in the plugin to this RoWatch deployment.</li><li><strong>Connect with your username and project key.</strong></li><li><strong>Start a session</strong> before working and end it when you're done.</li></ol></section>
-        <section class="settings-row"><h2>Project key</h2><p>${key ? 'Admins can copy this key for the Studio plugin.' : 'Your role does not expose the project key. Ask an owner or co-admin for it.'}</p>${key ? `<div class="key-line"><input id="integrationKey" readonly value="${esc(key)}"/><button id="copyIntegrationKey" class="btn btn-secondary" type="button">Copy key</button></div>` : ''}</section>
-        <section class="settings-row"><h2>Plugin API</h2><p>The plugin authenticates each request with <code class="mono">X-Project-Key</code> and <code class="mono">X-Username</code>.</p><div class="integration-code">GET /api/events/ping\nPOST /api/events/session/start\nPOST /api/events/session/end\nPOST /api/events/session/heartbeat\nPOST /api/events/script/open\nPOST /api/events/script/close\nPOST /api/events/instance/change</div></section>
+        <section class="settings-row"><h2>Roblox Studio connection</h2><p>Studio authenticates as your RoWatch account and loads every project you belong to.</p><ol class="setup-list"><li><strong>Install the plugin.</strong> Use <code class="mono">plugin/RoWatch.lua</code> from this package.</li><li><strong>Allow HTTP Requests</strong> in Roblox Studio game settings.</li><li><strong>Open Account</strong> on this website and copy your Studio API key.</li><li><strong>Paste the API key</strong> into the plugin and select this project.</li><li><strong>Start a session</strong> before working and end it when you are done.</li></ol></section>
+        <section class="settings-row"><h2>Access control</h2><p>The plugin can select this project only while the API-key owner is a project member. Removing a member immediately removes their access.</p></section>
       </div>`;
-    el('copyIntegrationKey')?.addEventListener('click', () => copyText(key, 'Project key copied'));
   }
 
   async function loadSettings() {
@@ -675,11 +677,9 @@
     content.innerHTML = `
       <div class="settings-stack">
         <section class="settings-row"><h2>Project details</h2><p>${isOwner() ? 'Rename the project. Changes are visible to every member.' : 'Only the project owner can rename this project.'}</p><div class="key-line"><input id="projectNameInput" value="${esc(p.name)}" ${isOwner() ? '' : 'readonly'}/>${isOwner() ? '<button id="saveProjectName" class="btn btn-primary" type="button">Save</button>' : ''}</div></section>
-        <section class="settings-row"><h2>Project key</h2><p>${isOwner() ? 'Regenerating the key disconnects existing Studio plugin configurations until they use the new key.' : 'Only the owner can regenerate the key.'}</p><div class="key-line"><input readonly id="settingsProjectKey" value="${esc(p.project_key || 'Hidden')}"/>${isOwner() ? '<button id="regenProjectKey" class="btn btn-secondary" type="button">Regenerate</button>' : ''}</div></section>
         ${isOwner() ? '<section class="settings-row danger-zone"><h2>Delete project</h2><p>Permanently deletes this project, its memberships, sessions, and script events.</p><button id="deleteProject" class="btn btn-danger" type="button">Delete project</button></section>' : ''}
       </div>`;
     el('saveProjectName')?.addEventListener('click', saveProjectName);
-    el('regenProjectKey')?.addEventListener('click', regenerateProjectKey);
     el('deleteProject')?.addEventListener('click', deleteProject);
   }
 
@@ -691,15 +691,6 @@
     syncProjectChrome();
     el('topbarBreadcrumb').textContent = `${state.project.name} / Project Settings`;
     toast('Project renamed');
-  }
-
-  async function regenerateProjectKey() {
-    if (!confirm('Regenerate the project key? Existing plugin connections will stop working.')) return;
-    const {ok, data} = await api(`/projects/${state.project.id}/key`, {method:'POST'});
-    if (!ok) return toast(data.error || 'Could not regenerate key.');
-    state.project.project_key = data.project_key;
-    el('settingsProjectKey').value = data.project_key;
-    toast('Project key regenerated');
   }
 
   async function deleteProject() {
@@ -763,22 +754,48 @@
     toast(`${result.data.codes.length} upgrade code${result.data.codes.length===1?'':'s'} generated`);
   }
 
+  function accountContentHtml(apiKey) {
+    const visibleKey = apiKey.api_key || apiKey.masked_key || 'Not generated';
+    return `<section class="panel-card"><div class="panel-card-head"><div><h2>Account details</h2><p>Your username identifies you across project activity.</p></div></div><div class="account-grid"><label>Username<input data-account-username value="${esc(state.user.username)}"/></label><label>Email<input data-account-email type="email" value="${esc(state.user.email)}"/></label></div><button class="btn btn-primary" type="button" data-save-account>Save account</button></section><section class="panel-card api-key-card"><div class="panel-card-head"><div><h2>Studio API key</h2><p>Paste this account key into the plugin. It will fetch every project you belong to.</p></div></div><div class="redeem-code-line"><input class="mono" data-account-api-key value="${esc(visibleKey)}" readonly/><button class="btn btn-secondary" type="button" data-copy-api-key ${apiKey.api_key?'':'disabled'}>Copy</button></div><p class="muted">${apiKey.api_key?'This is the only time the complete key is shown.':'Only the key prefix is stored for display. Regenerate if you no longer have the complete key.'}</p><div class="dialog-actions"><button class="btn btn-secondary" type="button" data-regenerate-api-key>Regenerate API key</button></div><p class="form-error" data-api-key-error></p></section>`;
+  }
+
+  function wireAccountContent(root) {
+    $('[data-save-account]', root)?.addEventListener('click', async () => {
+      const result = await api('/auth/me', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          username: $('[data-account-username]', root).value.trim(),
+          email: $('[data-account-email]', root).value.trim(),
+        }),
+      });
+      if (!result.ok) return toast(result.data.error || 'Could not save account.');
+      state.user = {...state.user, ...result.data};
+      syncUserUI();
+      toast('Account updated');
+    });
+    $('[data-copy-api-key]', root)?.addEventListener('click', () => {
+      copyText($('[data-account-api-key]', root).value, 'API key copied');
+    });
+    $('[data-regenerate-api-key]', root)?.addEventListener('click', async () => {
+      if (!confirm('Regenerate the API key? Every connected Studio plugin will be signed out immediately.')) return;
+      const result = await api('/auth/api-key/regenerate', {method:'POST', body:'{}'});
+      if (!result.ok) return $('[data-api-key-error]', root).textContent = result.data.error || 'Could not regenerate API key.';
+      const input = $('[data-account-api-key]', root);
+      input.value = result.data.api_key;
+      $('[data-copy-api-key]', root).disabled = false;
+      toast('API key regenerated');
+    });
+  }
+
   async function loadAccountPanel() {
     const content = el('panelContent');
     const result = await api('/auth/me');
     if (!result.ok) return renderError(content, result.data.error);
     state.user = result.data; syncUserUI();
-    content.innerHTML = `<div class="account-panel"><section class="panel-card"><div class="panel-card-head"><div><h2>Account details</h2><p>Your RoWatch username is also used by the Roblox Studio plugin.</p></div></div><div class="account-grid"><label>Username<input id="accountUsername" value="${esc(state.user.username)}"/></label><label>Email<input id="accountEmail" type="email" value="${esc(state.user.email)}"/></label></div><button id="saveAccount" class="btn btn-primary" type="button">Save account</button></section>${planChooserHtml()}</div>`;
-    el('saveAccount').addEventListener('click', saveAccountFromPanel);
+    const keyResult = await api('/auth/api-key', {method:'POST', body:'{}'});
+    content.innerHTML = `<div class="account-panel">${accountContentHtml(keyResult.data)}${planChooserHtml()}</div>`;
+    wireAccountContent(content);
     wireAccountPlanButtons(content);
-  }
-
-  async function saveAccountFromPanel() {
-    const username = el('accountUsername').value.trim();
-    const email = el('accountEmail').value.trim();
-    const {ok,data} = await api('/auth/me',{method:'PATCH',body:JSON.stringify({username,email})});
-    if (!ok) return toast(data.error || 'Could not update account.');
-    state.user = {...state.user,...data}; syncUserUI(); toast('Account updated');
   }
 
   async function openStandaloneAccount() {
@@ -792,18 +809,15 @@
     const result = await api('/auth/me');
     if (!result.ok) return toast(result.data.error || 'Could not load account.');
     state.user = result.data; syncUserUI();
-    dialog.innerHTML = `<form id="standaloneAccountForm"><div class="dialog-head"><div><h2>Account</h2><p>Your username and plan apply across RoWatch.</p></div><button type="button" class="dialog-x" data-standalone-close>×</button></div><label>Username<input id="standaloneUsername" value="${esc(state.user.username)}"/></label><label>Email<input id="standaloneEmail" type="email" value="${esc(state.user.email)}"/></label><p id="standaloneAccountError" class="form-error"></p><div class="dialog-actions"><button type="button" class="btn btn-secondary" id="standaloneLogout">Log out</button><button type="submit" class="btn btn-primary">Save</button></div></form>${planChooserHtml()}`;
+    const keyResult = await api('/auth/api-key', {method:'POST', body:'{}'});
+    dialog.innerHTML = `<div class="dialog-head"><div><h2>Account</h2><p>Profile, Studio access, and account plan.</p></div><button type="button" class="dialog-x" data-standalone-close>x</button></div>${accountContentHtml(keyResult.data)}${planChooserHtml()}<div class="dialog-actions"><button type="button" class="btn btn-secondary" id="standaloneLogout">Log out</button></div>`;
     $('[data-standalone-close]',dialog).addEventListener('click',()=>dialog.close());
     el('standaloneLogout').addEventListener('click',()=>{dialog.close();logout();});
+    wireAccountContent(dialog);
     wireAccountPlanButtons(dialog);
-    el('standaloneAccountForm').addEventListener('submit', async e => {
-      e.preventDefault();
-      const {ok,data} = await api('/auth/me',{method:'PATCH',body:JSON.stringify({username:el('standaloneUsername').value.trim(),email:el('standaloneEmail').value.trim()})});
-      if(!ok) return el('standaloneAccountError').textContent=data.error||'Could not save.';
-      state.user={...state.user,...data};syncUserUI();dialog.close();toast('Account updated');
-    });
     dialog.showModal();
   }
+
 
   async function openCheckout(plan) {
     state.checkoutPlan = plan;

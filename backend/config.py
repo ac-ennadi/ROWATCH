@@ -6,7 +6,8 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL", "sqlite:///rowatch.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JWT_SECRET          = os.environ.get("JWT_SECRET", "rowatch-jwt-secret-change-in-prod")
-    JWT_EXPIRY          = timedelta(days=7)
+    SESSION_DAYS        = int(os.environ.get("ROWATCH_SESSION_DAYS", "7"))
+    JWT_EXPIRY          = timedelta(days=SESSION_DAYS)
 
 PLAN_PRICES = {
     "pro":    {"monthly": 5.99,  "yearly": 49.99},
