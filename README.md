@@ -153,6 +153,10 @@ button. Tracking runs only during an active session and records `BasePart` plus
 `GuiObject`/`LayerCollector` additions and removals.
 
 
+Free projects include up to **10 tasks** and **3 Markdown documents**. Pro and
+Studio projects have unlimited tasks and documentation; limits are enforced by the
+API and shown in the workspace UI.
+
 Tasks can be assigned to multiple members. Each assignment has its own completion
 state, so shared work remains open for every member who has not checked it off. The
 Studio plugin shows only tasks assigned to the saved profile username and allows

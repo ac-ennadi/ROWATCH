@@ -13,6 +13,8 @@
     liveRefreshTimer: null,
     editTaskId: null,
     activeDocumentId: null,
+    editingDocumentId: null,
+    taskAssigneeFilter: 'all',
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -159,7 +161,7 @@
         return;
       }
       if (update.type === 'document_updated') {
-        if (state.panel === 'documents') state.liveRefreshTimer = setTimeout(() => loadDocuments(true), 120);
+        if (state.panel === 'documents' && !state.editingDocumentId) state.liveRefreshTimer = setTimeout(() => loadDocuments(true), 120);
         return;
       }
       if (state.panel === 'tasks' || state.panel === 'documents') return;
@@ -467,20 +469,30 @@
     const content = el('panelContent');
     const [tasksResult, membersResult] = await Promise.all([
       api(`/workspace/${state.project.id}/tasks`),
-      isAdmin() ? api(`/projects/${state.project.id}/members`) : Promise.resolve({ok:true,data:[]}),
+      api(`/projects/${state.project.id}/members`),
     ]);
     if (!tasksResult.ok) return renderError(content, tasksResult.data.error);
-    const tasks = tasksResult.data;
+    const tasks = tasksResult.data.items || [];
+    const taskUsage = tasksResult.data.usage || {current:tasks.length,limit:null,plan:state.project.plan};
     const members = membersResult.ok ? membersResult.data : [];
+    if (state.taskAssigneeFilter !== 'all' && !members.some(member => member.user_id === state.taskAssigneeFilter)) {
+      state.taskAssigneeFilter = 'all';
+    }
+    const visibleTasks = state.taskAssigneeFilter === 'all'
+      ? tasks
+      : tasks.filter(task => task.assignments.some(item => item.user_id === state.taskAssigneeFilter));
     const editing = tasks.find(task => task.id === state.editTaskId);
     const memberChecks = members.map(member => `<label class="assignee-option"><input type="checkbox" name="taskAssignee" value="${esc(member.user_id)}" ${editing?.assignments.some(item=>item.user_id===member.user_id)?'checked':''}/><span>${esc(member.username)}</span><small>${esc(roleName(member.role))}</small></label>`).join('');
     const editor = isAdmin() ? `<section class="panel-card task-editor"><div class="panel-card-head"><div><h2>${editing?'Edit task':'Create task'}</h2><p>Assign one task to one or more project members.</p></div></div><div class="task-form-grid"><label>Title<input id="taskTitle" maxlength="200" value="${esc(editing?.title||'')}" placeholder="Ship inventory UI"/></label><label>Due date<input id="taskDue" type="date" value="${esc(editing?.due_at?.slice(0,10)||'')}"/></label></div><label>Description (Markdown)<textarea id="taskDescription" rows="4" placeholder="## Acceptance criteria">${esc(editing?.description_md||'')}</textarea></label><div class="assignee-grid">${memberChecks || '<span class="muted">Add project members before assigning tasks.</span>'}</div><div class="task-actions"><button id="saveTask" class="btn btn-primary" type="button">${editing?'Save changes':'Create task'}</button>${editing?'<button id="cancelTaskEdit" class="btn btn-secondary" type="button">Cancel</button>':''}</div><p id="taskError" class="form-error"></p></section>` : '';
-    const cards = tasks.map(task => {
+    const cards = visibleTasks.map(task => {
       const mine = task.assigned_to_me;
       const assignees = task.assignments.map(item=>`<span class="assignee-chip ${item.completed?'done':''}">${item.completed?'✓ ':''}${esc(item.username)}</span>`).join('');
       return `<article class="task-card ${task.my_completed?'task-done':''}"><div class="task-check">${mine?`<input type="checkbox" data-task-complete="${esc(task.id)}" ${task.my_completed?'checked':''} aria-label="Complete ${esc(task.title)}"/>`:'<span>•</span>'}</div><div class="task-body"><div class="task-title-row"><h2>${esc(task.title)}</h2><span>${task.completed_count}/${task.assignments.length} complete</span></div>${task.description_md?`<div class="markdown task-markdown">${renderMarkdown(task.description_md)}</div>`:''}<div class="task-meta">${task.due_at?`<span>Due ${esc(fmtDate(task.due_at,false))}</span>`:'<span>No due date</span>'}<span>Created by ${esc(task.created_by)}</span></div><div class="assignee-chips">${assignees||'<span class="muted">Unassigned</span>'}</div></div>${isAdmin()?`<div class="task-admin-actions"><button class="mini-btn" data-edit-task="${esc(task.id)}">Edit</button><button class="mini-btn danger" data-delete-task="${esc(task.id)}">Delete</button></div>`:''}</article>`;
     }).join('');
-    content.innerHTML = `<div class="toolbar"><div><h2>Team tasks</h2><p>Completion is tracked separately for every assignee.</p></div><span class="role-box">${tasks.length} total</span></div>${editor}<div class="task-list">${cards || emptyInline('No tasks yet', isAdmin()?'Create the first team task above.':'Your project admins have not created tasks yet.')}</div>`;
+    const filterOptions = [`<option value="all">All members</option>`, ...members.map(member => `<option value="${esc(member.user_id)}" ${state.taskAssigneeFilter===member.user_id?'selected':''}>${esc(member.username)}</option>`)].join('');
+    content.innerHTML = `<div class="toolbar"><div><h2>Team tasks</h2><p>Completion is tracked separately for every assignee.</p></div><div class="task-filter"><label>Filter by assignee<select id="taskAssigneeFilter">${filterOptions}</select></label><span class="role-box">${visibleTasks.length}/${tasks.length} shown · ${taskUsage.limit===null?'Unlimited':`${taskUsage.current}/${taskUsage.limit}`}</span></div></div>${editor}<div class="task-list">${cards || emptyInline('No matching tasks', state.taskAssigneeFilter==='all'?(isAdmin()?'Create the first team task above.':'Your project admins have not created tasks yet.'):'No tasks are assigned to this member.')}</div>`;
+    el('taskAssigneeFilter').value = state.taskAssigneeFilter;
+    el('taskAssigneeFilter').addEventListener('change', event => { state.taskAssigneeFilter=event.target.value; loadTasks(true); });
     el('saveTask')?.addEventListener('click', saveTask);
     el('cancelTaskEdit')?.addEventListener('click',()=>{state.editTaskId=null;loadTasks();});
     $$('[data-task-complete]',content).forEach(node=>node.addEventListener('change',()=>toggleTask(node.dataset.taskComplete,node.checked)));
@@ -515,17 +527,21 @@
     const content=el('panelContent');
     const result=await api(`/workspace/${state.project.id}/documents`);
     if(!result.ok)return renderError(content,result.data.error);
-    const documents=result.data;
+    const documents=result.data.items || [];
+    const documentUsage=result.data.usage || {current:documents.length,limit:null,plan:state.project.plan};
     if(!documents.some(doc=>doc.id===state.activeDocumentId))state.activeDocumentId=documents[0]?.id||null;
     const selected=documents.find(doc=>doc.id===state.activeDocumentId);
     const list=documents.map(doc=>`<button class="document-link ${doc.id===state.activeDocumentId?'active':''}" data-document-id="${esc(doc.id)}"><strong>${esc(doc.title)}</strong><small>Updated ${esc(fmtDate(doc.updated_at))}</small></button>`).join('');
     let detail;
-    if(selected&&isAdmin())detail=`<div class="document-editor"><input id="documentTitle" maxlength="200" value="${esc(selected.title)}"/><textarea id="documentContent" rows="18" placeholder="# Documentation">${esc(selected.content_md)}</textarea><div class="task-actions"><button id="saveDocument" class="btn btn-primary">Save document</button><button id="deleteDocument" class="btn btn-danger">Delete</button></div><h3>Preview</h3><div class="markdown document-preview">${renderMarkdown(selected.content_md)}</div></div>`;
-    else if(selected)detail=`<article class="document-reader"><h1>${esc(selected.title)}</h1><div class="markdown">${renderMarkdown(selected.content_md)}</div></article>`;
+    const editingDocument = selected && isAdmin() && state.editingDocumentId === selected.id;
+    if(editingDocument)detail=`<div class="document-editor"><input id="documentTitle" maxlength="200" value="${esc(selected.title)}"/><textarea id="documentContent" rows="18" placeholder="# Documentation">${esc(selected.content_md)}</textarea><div class="task-actions"><button id="saveDocument" class="btn btn-primary">Save document</button><button id="cancelDocumentEdit" class="btn btn-secondary">Cancel</button><button id="deleteDocument" class="btn btn-danger">Delete</button></div><h3>Preview</h3><div class="markdown document-preview">${renderMarkdown(selected.content_md)}</div></div>`;
+    else if(selected)detail=`<article class="document-reader"><div class="document-reader-head"><h1>${esc(selected.title)}</h1>${isAdmin()?'<button id="editDocument" class="btn btn-primary">Edit document</button>':''}</div><div class="markdown">${renderMarkdown(selected.content_md)}</div></article>`;
     else detail=emptyInline('No documentation yet',isAdmin()?'Create the first Markdown document.':'Project admins have not added documentation yet.');
-    content.innerHTML=`<div class="toolbar"><div><h2>Project documentation</h2><p>Write guides, specifications, notes, and team knowledge in Markdown.</p></div>${isAdmin()?'<button id="newDocument" class="btn btn-primary">+ New document</button>':''}</div><div class="documents-layout"><aside class="documents-list">${list||'<span class="muted">No documents</span>'}</aside><section class="panel-card">${detail}</section></div>`;
-    $$('[data-document-id]',content).forEach(node=>node.addEventListener('click',()=>{state.activeDocumentId=node.dataset.documentId;loadDocuments();}));
+    content.innerHTML=`<div class="toolbar"><div><h2>Project documentation</h2><p>Write guides, specifications, notes, and team knowledge in Markdown.</p></div><div class="task-filter"><span class="role-box">${documentUsage.limit===null?'Unlimited':`${documentUsage.current}/${documentUsage.limit} documents`}</span>${isAdmin()?'<button id="newDocument" class="btn btn-primary">+ New document</button>':''}</div></div><div class="documents-layout"><aside class="documents-list">${list||'<span class="muted">No documents</span>'}</aside><section class="panel-card">${detail}</section></div>`;
+    $$('[data-document-id]',content).forEach(node=>node.addEventListener('click',()=>{state.activeDocumentId=node.dataset.documentId;state.editingDocumentId=null;loadDocuments();}));
     el('newDocument')?.addEventListener('click',createDocument);
+    el('editDocument')?.addEventListener('click',()=>{state.editingDocumentId=state.activeDocumentId;loadDocuments();});
+    el('cancelDocumentEdit')?.addEventListener('click',()=>{state.editingDocumentId=null;loadDocuments();});
     el('saveDocument')?.addEventListener('click',saveDocument);
     el('deleteDocument')?.addEventListener('click',deleteDocument);
     el('documentContent')?.addEventListener('input', event => {
@@ -538,18 +554,18 @@
     const title=prompt('Document title');if(!title?.trim())return;
     const result=await api(`/workspace/${state.project.id}/documents`,{method:'POST',body:JSON.stringify({title:title.trim(),content_md:'# '+title.trim()+'\n'})});
     if(!result.ok)return toast(result.data.error||'Could not create document.');
-    state.activeDocumentId=result.data.id;await loadDocuments(true);
+    state.activeDocumentId=result.data.id;state.editingDocumentId=null;await loadDocuments(true);
   }
 
   async function saveDocument(){
     const result=await api(`/workspace/${state.project.id}/documents/${state.activeDocumentId}`,{method:'PATCH',body:JSON.stringify({title:el('documentTitle').value.trim(),content_md:el('documentContent').value})});
-    if(!result.ok)return toast(result.data.error||'Could not save document.');toast('Document saved');await loadDocuments(true);
+    if(!result.ok)return toast(result.data.error||'Could not save document.');state.editingDocumentId=null;toast('Document saved');await loadDocuments(true);
   }
 
   async function deleteDocument(){
     if(!confirm('Permanently delete this document?'))return;
     const result=await api(`/workspace/${state.project.id}/documents/${state.activeDocumentId}`,{method:'DELETE'});
-    if(!result.ok)return toast(result.data.error||'Could not delete document.');state.activeDocumentId=null;toast('Document deleted');await loadDocuments(true);
+    if(!result.ok)return toast(result.data.error||'Could not delete document.');state.activeDocumentId=null;state.editingDocumentId=null;toast('Document deleted');await loadDocuments(true);
   }
 
   async function loadAnalytics() {

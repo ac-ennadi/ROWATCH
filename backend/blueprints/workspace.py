@@ -2,6 +2,7 @@ from datetime import datetime
 
 from flask import Blueprint, g, jsonify, request
 
+from config import PLAN_LIMITS
 from models import db, ProjectDocument, ProjectMember, Task, TaskAssignment
 from realtime import publish_project_update
 from utils import plugin_auth, project_access
@@ -18,6 +19,23 @@ def _is_admin():
 def _require_admin():
     if not _is_admin():
         return jsonify({"error": "Admin required"}), 403
+    return None
+
+
+def _feature_limit(feature):
+    return PLAN_LIMITS.get(g.project.plan, PLAN_LIMITS["free"])[feature]
+
+
+def _limit_error(feature, current):
+    limit = _feature_limit(feature)
+    if limit is not None and current >= limit:
+        label = "task" if feature == "tasks" else "document"
+        return jsonify({
+            "error": f"Free projects are limited to {limit} {label}s. Upgrade to Pro for unlimited {feature}.",
+            "limit": limit,
+            "current": current,
+            "upgrade_required": True,
+        }), 403
     return None
 
 
@@ -81,7 +99,10 @@ def _valid_assignees(project_id, user_ids):
 @project_access()
 def list_tasks(project_id):
     tasks = Task.query.filter_by(project_id=project_id).order_by(Task.created_at.desc()).all()
-    return jsonify([_task_dict(task, g.user.id) for task in tasks])
+    return jsonify({
+        "items": [_task_dict(task, g.user.id) for task in tasks],
+        "usage": {"current": len(tasks), "limit": _feature_limit("tasks"), "plan": g.project.plan},
+    })
 
 
 @workspace_bp.route("/<project_id>/tasks", methods=["POST"])
@@ -90,6 +111,10 @@ def create_task(project_id):
     denied = _require_admin()
     if denied:
         return denied
+    current = Task.query.filter_by(project_id=project_id).count()
+    limited = _limit_error("tasks", current)
+    if limited:
+        return limited
     data = request.get_json(silent=True) or {}
     title = str(data.get("title") or "").strip()
     if not title:
@@ -203,7 +228,10 @@ def complete_task(project_id, task_id):
 @project_access()
 def list_documents(project_id):
     documents = ProjectDocument.query.filter_by(project_id=project_id).order_by(ProjectDocument.updated_at.desc()).all()
-    return jsonify([_document_dict(document) for document in documents])
+    return jsonify({
+        "items": [_document_dict(document) for document in documents],
+        "usage": {"current": len(documents), "limit": _feature_limit("documents"), "plan": g.project.plan},
+    })
 
 
 @workspace_bp.route("/<project_id>/documents", methods=["POST"])
@@ -212,6 +240,10 @@ def create_document(project_id):
     denied = _require_admin()
     if denied:
         return denied
+    current = ProjectDocument.query.filter_by(project_id=project_id).count()
+    limited = _limit_error("documents", current)
+    if limited:
+        return limited
     data = request.get_json(silent=True) or {}
     title = str(data.get("title") or "").strip()
     if not title:

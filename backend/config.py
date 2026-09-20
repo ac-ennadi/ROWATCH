@@ -14,7 +14,7 @@ PLAN_PRICES = {
 }
 
 PLAN_LIMITS = {
-    "free":   {"projects": 1,    "members": 5,  "history_days": 7,  "co_admins": 0, "export": False},
-    "pro":    {"projects": 3,    "members": 15, "history_days": 60, "co_admins": 1, "export": True},
-    "studio": {"projects": None, "members": None,"history_days": None,"co_admins": None,"export": True},
+    "free":   {"projects": 1,    "members": 5,  "history_days": 7,   "co_admins": 0,    "export": False, "tasks": 10,  "documents": 3},
+    "pro":    {"projects": 3,    "members": 15, "history_days": 60,  "co_admins": 1,    "export": True,  "tasks": None,"documents": None},
+    "studio": {"projects": None, "members": None,"history_days": None,"co_admins": None, "export": True,  "tasks": None,"documents": None},
 }
