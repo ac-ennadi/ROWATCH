@@ -8,6 +8,8 @@ def test_security_headers_and_cross_origin_posts(client, app):
     assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
 
     app.config.update(CORS_ENABLED=False, TRUSTED_ORIGINS=("https://dashboard.example",))
+    proxied_same_origin = client.post("/auth/login", headers={"Origin": "https://localhost"}, json={"username": "x", "password": "x"})
+    assert proxied_same_origin.status_code == 401
     disabled = client.post("/auth/login", headers={"Origin": "https://dashboard.example"}, json={"username": "x", "password": "x"})
     assert disabled.status_code == 403
     assert "Access-Control-Allow-Origin" not in disabled.headers

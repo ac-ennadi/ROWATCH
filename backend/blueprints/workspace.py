@@ -1,15 +1,17 @@
 from datetime import datetime
+import re
 
 from flask import Blueprint, g, jsonify, request
 
 from config import PLAN_LIMITS
-from models import db, ProjectDocument, ProjectMember, Task, TaskAssignment, TaskColumn
+from models import db, DocumentLink, ProjectDocument, ProjectMember, Task, TaskAssignment, TaskColumn
 from realtime import publish_project_update
 from utils import plugin_auth, project_access
 
 
 workspace_bp = Blueprint("workspace", __name__, url_prefix="/workspace")
 plugin_tasks_bp = Blueprint("plugin_tasks", __name__, url_prefix="/api/tasks")
+plugin_documents_bp = Blueprint("plugin_documents", __name__, url_prefix="/api/documents")
 
 
 NAME_MAX_LENGTH = 32
@@ -135,7 +137,43 @@ def _task_dict(task, current_user_id):
     }
 
 
+WIKI_LINK_PATTERN = re.compile(r"\[\[([^]\n]{1,64})\]\]")
+
+
+def _wiki_names(content):
+    return list(dict.fromkeys(match.strip() for match in WIKI_LINK_PATTERN.findall(content or "") if match.strip()))
+
+
+def _sync_document_links(document):
+    DocumentLink.query.filter_by(source_document_id=document.id).delete(synchronize_session=False)
+    titles = {item.title.casefold(): item for item in ProjectDocument.query.filter_by(project_id=document.project_id).all()}
+    for name in _wiki_names(document.content_md):
+        target = titles.get(name.casefold())
+        if target and target.id != document.id:
+            db.session.add(DocumentLink(source_document_id=document.id, target_document_id=target.id))
+
+
+def _rename_wiki_references(project_id, old_title, new_title):
+    pattern = re.compile(r"\[\[\s*" + re.escape(old_title) + r"\s*\]\]", re.IGNORECASE)
+    for source in ProjectDocument.query.filter_by(project_id=project_id).all():
+        updated = pattern.sub(lambda _match: f"[[{new_title}]]", source.content_md or "")
+        if updated != (source.content_md or ""):
+            source.content_md = updated
+            source.updated_by_id = g.user.id
+            source.updated_at = datetime.utcnow()
+
+
+def _sync_project_document_links(project_id):
+    for project_document in ProjectDocument.query.filter_by(project_id=project_id).all():
+        _sync_document_links(project_document)
+
+
 def _document_dict(document):
+    outgoing = DocumentLink.query.filter_by(source_document_id=document.id).all()
+    incoming = DocumentLink.query.filter_by(target_document_id=document.id).all()
+    linked = [db.session.get(ProjectDocument, link.target_document_id) for link in outgoing]
+    backlinks = [db.session.get(ProjectDocument, link.source_document_id) for link in incoming]
+    resolved_names = {item.title.casefold() for item in linked if item}
     return {
         "id": document.id,
         "title": document.title,
@@ -144,6 +182,9 @@ def _document_dict(document):
         "updated_by": (document.updated_by or document.created_by).username,
         "created_at": document.created_at.isoformat(),
         "updated_at": document.updated_at.isoformat(),
+        "links": [{"id": item.id, "title": item.title} for item in linked if item],
+        "backlinks": [{"id": item.id, "title": item.title} for item in backlinks if item],
+        "unresolved_links": [name for name in _wiki_names(document.content_md) if name.casefold() not in resolved_names],
     }
 
 
@@ -461,6 +502,18 @@ def complete_task(project_id, task_id):
     return jsonify({"ok": True, "completed": assignment.completed})
 
 
+@workspace_bp.route("/<project_id>/documents/graph", methods=["GET"])
+@project_access()
+def document_graph(project_id):
+    documents = ProjectDocument.query.filter_by(project_id=project_id).order_by(ProjectDocument.title).all()
+    document_ids = {document.id for document in documents}
+    links = DocumentLink.query.filter(DocumentLink.source_document_id.in_(document_ids)).all() if document_ids else []
+    return jsonify({
+        "nodes": [{"id": document.id, "title": document.title, "updated_at": document.updated_at.isoformat()} for document in documents],
+        "links": [{"source": link.source_document_id, "target": link.target_document_id} for link in links if link.target_document_id in document_ids],
+    })
+
+
 @workspace_bp.route("/<project_id>/documents", methods=["GET"])
 @project_access()
 def list_documents(project_id):
@@ -487,6 +540,9 @@ def create_document(project_id):
         return jsonify({"error": "Document title is required"}), 400
     if len(title) > NAME_MAX_LENGTH:
         return jsonify({"error": f"Document title must be {NAME_MAX_LENGTH} characters or fewer"}), 400
+    duplicate = ProjectDocument.query.filter(ProjectDocument.project_id == project_id, db.func.lower(ProjectDocument.title) == title.lower()).first()
+    if duplicate:
+        return jsonify({"error": "A document with this title already exists"}), 409
     content = str(data.get("content_md") or "")
     content_error = _document_content_error(content)
     if content_error:
@@ -499,6 +555,8 @@ def create_document(project_id):
         content_md=content,
     )
     db.session.add(document)
+    db.session.flush()
+    _sync_project_document_links(project_id)
     db.session.commit()
     publish_project_update(project_id, "document_updated", {"document_id": document.id})
     return jsonify(_document_dict(document)), 201
@@ -520,6 +578,11 @@ def update_document(project_id, document_id):
             return jsonify({"error": "Document title is required"}), 400
         if len(title) > NAME_MAX_LENGTH:
             return jsonify({"error": f"Document title must be {NAME_MAX_LENGTH} characters or fewer"}), 400
+        duplicate = ProjectDocument.query.filter(ProjectDocument.project_id == project_id, ProjectDocument.id != document.id, db.func.lower(ProjectDocument.title) == title.lower()).first()
+        if duplicate:
+            return jsonify({"error": "A document with this title already exists"}), 409
+        if title != document.title:
+            _rename_wiki_references(project_id, document.title, title)
         document.title = title
     if "content_md" in data:
         content = str(data.get("content_md") or "")
@@ -529,6 +592,8 @@ def update_document(project_id, document_id):
         document.content_md = content
     document.updated_by_id = g.user.id
     document.updated_at = datetime.utcnow()
+    db.session.flush()
+    _sync_project_document_links(project_id)
     db.session.commit()
     publish_project_update(project_id, "document_updated", {"document_id": document.id})
     return jsonify(_document_dict(document))
@@ -543,10 +608,18 @@ def delete_document(project_id, document_id):
     document = ProjectDocument.query.filter_by(id=document_id, project_id=project_id).first()
     if not document:
         return jsonify({"error": "Document not found"}), 404
+    DocumentLink.query.filter(db.or_(DocumentLink.source_document_id == document.id, DocumentLink.target_document_id == document.id)).delete(synchronize_session=False)
     db.session.delete(document)
     db.session.commit()
     publish_project_update(project_id, "document_updated", {"document_id": document_id})
     return jsonify({"ok": True})
+
+
+@plugin_documents_bp.route("", methods=["GET"])
+@plugin_auth
+def plugin_list_documents():
+    documents = ProjectDocument.query.filter_by(project_id=g.project.id).order_by(ProjectDocument.updated_at.desc()).all()
+    return jsonify([_document_dict(document) for document in documents])
 
 
 @plugin_tasks_bp.route("", methods=["GET"])

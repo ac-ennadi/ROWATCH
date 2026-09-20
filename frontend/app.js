@@ -14,6 +14,10 @@
     editTaskId: null,
     activeDocumentId: null,
     editingDocumentId: null,
+    documentView: 'list',
+    graphSelectedDocumentId: null,
+    documentGraphPositions: {},
+    documentGraphViewport: {x: 0, y: 0, scale: 1},
     taskAssigneeFilter: 'all',
     activityMemberFilter: 'all',
     activityPage: 1,
@@ -604,11 +608,12 @@
     const columnOptions = columns.map(column=>`<option value="${esc(column.id)}" ${(editing?.column_id||columns[0]?.id)===column.id?'selected':''}>${esc(column.name)}</option>`).join('');
     const editor = isAdmin() && (state.taskComposerOpen || editing) ? `<section class="panel-card task-editor"><div class="panel-card-head task-editor-head"><div><h2>${editing?'Edit task':'Create task'}</h2><p>Assign one task to one or more project members.</p></div><button id="closeTaskEditor" class="dialog-x" type="button" aria-label="Close task editor">×</button></div><div class="task-form-grid"><label>Title<input id="taskTitle" maxlength="32" value="${esc(editing?.title||'')}" placeholder="Ship inventory UI"/></label><label>Column<select id="taskColumn">${columnOptions}</select></label><label>Due date<input id="taskDue" type="date" value="${esc(editing?.due_at?.slice(0,10)||'')}"/></label></div><label>Description (Markdown)<textarea id="taskDescription" rows="4" placeholder="## Acceptance criteria">${esc(editing?.description_md||'')}</textarea></label><div class="assignee-help"><strong>Assign task to</strong><span>Select the checkboxes for the people responsible. You can choose multiple people.</span></div><div class="assignee-grid">${memberChecks || '<span class="muted">Add project members before assigning tasks.</span>'}</div><div class="task-actions"><button id="saveTask" class="btn btn-primary" type="button">${editing?'Save changes':'Create task'}</button><button id="cancelTaskEdit" class="btn btn-secondary" type="button">Cancel</button></div><p id="taskError" class="form-error"></p></section>` : '';
     const filterOptions = [`<option value="all">All members</option>`, ...members.map(member => `<option value="${esc(member.user_id)}" ${state.taskAssigneeFilter===member.user_id?'selected':''}>${esc(member.username)}</option>`)].join('');
+    const taskUsageBadge = taskUsage.limit === null ? '' : `<span class="role-box task-usage">${taskUsage.current}/${taskUsage.limit} tasks</span>`;
     const board = columns.map(column=>{
       const cards=visibleTasks.filter(task=>task.column_id===column.id).sort((a,b)=>a.position-b.position).map(taskCardMarkup).join('');
       return `<section class="task-column" data-column-id="${esc(column.id)}" ${isAdmin()?'draggable="true"':''}><header class="task-column-head"><div class="task-column-title">${isAdmin()?'<i class="column-grip" data-lucide="grip-vertical"></i>':''}<strong>${esc(column.name)}</strong><span>${column.task_count}</span></div>${isAdmin()?`<div class="column-actions"><button class="icon-btn" data-rename-column="${esc(column.id)}" title="Rename column" aria-label="Rename ${esc(column.name)}"><i data-lucide="pencil"></i></button><button class="icon-btn danger" data-delete-column="${esc(column.id)}" title="Delete column" aria-label="Delete ${esc(column.name)}"><i data-lucide="trash-2"></i></button></div>`:''}</header><div class="task-column-list" data-column-drop="${esc(column.id)}">${cards||'<div class="column-empty">Drop tasks here</div>'}</div></section>`;
     }).join('');
-    content.innerHTML = `<div class="toolbar task-toolbar"><div></div><div class="task-filter"><label>Filter by assignee<select id="taskAssigneeFilter">${filterOptions}</select></label>${isAdmin()?'<button id="addTaskColumnButton" class="btn btn-secondary" type="button"><i data-lucide="columns-3"></i> Add column</button><button id="createTaskButton" class="btn btn-primary" type="button">+ Create task</button>':''}<span class="role-box">${visibleTasks.length}/${tasks.length} shown · ${taskUsage.limit===null?'Unlimited':`${taskUsage.current}/${taskUsage.limit}`}</span></div></div><div id="taskBoard" class="task-board">${board}</div>`;
+    content.innerHTML = `<div class="toolbar task-toolbar"><div></div><div class="task-filter">${taskUsageBadge}<label>Filter by assignee<select id="taskAssigneeFilter">${filterOptions}</select></label>${isAdmin()?'<button id="addTaskColumnButton" class="btn btn-secondary" type="button"><i data-lucide="columns-3"></i> Add column</button><button id="createTaskButton" class="btn btn-primary" type="button">+ Create task</button>':''}</div></div><div id="taskBoard" class="task-board">${board}</div>`;
     const taskDialog = el('taskEditorDialog');
     el('taskDialogContent').innerHTML = editor;
     if (editor && !taskDialog.open) taskDialog.showModal();
@@ -749,46 +754,101 @@
     if(state.editTaskId===taskId)state.editTaskId=null;toast('Task deleted');await loadTasks(true);
   }
 
+  function renderDocumentMarkdown(markdown, documents) {
+    const byTitle=new Map(documents.map(document=>[document.title.toLowerCase(),document]));
+    return renderMarkdown(markdown).replace(/\[\[([^\]\n]+)\]\]/g,(_,rawTitle)=>{
+      const title=rawTitle.trim(),target=byTitle.get(title.toLowerCase());
+      return target?`<button class="wiki-link" type="button" data-wiki-document="${esc(target.id)}">${esc(title)} <span>→</span></button>`:`<button class="wiki-link missing" type="button" data-missing-document="${esc(title)}">${esc(title)} <span>+</span></button>`;
+    });
+  }
+
+  function documentGraphMarkup(documents, links) {
+    if(!documents.length)return emptyInline('No documents yet','Create a document to start the graph.');
+    const width=1200,height=760,cx=width/2,cy=height/2,radius=Math.min(390,150+documents.length*20);
+    const activeIds=new Set(documents.map(document=>document.id));
+    Object.keys(state.documentGraphPositions).forEach(id=>{if(!activeIds.has(id))delete state.documentGraphPositions[id];});
+    documents.forEach((document,index)=>{if(!state.documentGraphPositions[document.id]){const angle=(Math.PI*2*index/documents.length)-Math.PI/2;state.documentGraphPositions[document.id]={x:cx+Math.cos(angle)*radius,y:cy+Math.sin(angle)*Math.min(radius,245)};}});
+    const edges=links.map(link=>{const a=state.documentGraphPositions[link.source],b=state.documentGraphPositions[link.target];if(!a||!b)return'';return`<line class="graph-edge" data-graph-source="${esc(link.source)}" data-graph-target="${esc(link.target)}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;}).join('');
+    const nodes=documents.map(document=>{const point=state.documentGraphPositions[document.id];return`<button class="graph-node" data-graph-document="${esc(document.id)}" style="left:${point.x}px;top:${point.y}px"><i></i><span>${esc(document.title)}</span></button>`;}).join('');
+    return `<div class="document-graph-shell"><div class="graph-controls" aria-label="Graph controls"><button type="button" data-graph-zoom="out" title="Zoom out"><i data-lucide="minus"></i></button><span id="graphZoomLabel">100%</span><button type="button" data-graph-zoom="in" title="Zoom in"><i data-lucide="plus"></i></button><button type="button" data-graph-reset title="Reset view"><i data-lucide="maximize"></i></button></div><div class="document-graph" id="documentGraph" aria-label="Interactive document relationship graph"><div class="document-graph-world" id="documentGraphWorld" style="width:${width}px;height:${height}px"><svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${edges}</svg>${nodes}</div></div></div><p class="graph-help">Drag nodes to arrange them. Drag empty space to pan. Scroll or use +/− to zoom. Select a node twice to open it.</p>`;
+  }
+
+  function wireDocumentGraph(documents, links) {
+    const viewport=el('documentGraph'),world=el('documentGraphWorld');
+    if(!viewport||!world)return;
+    const shell=viewport.closest('.document-graph-shell');
+    const view=state.documentGraphViewport;
+    if(!view.initialized){view.scale=Math.min(.9,Math.max(.58,(viewport.clientWidth-40)/1200));view.x=(viewport.clientWidth-1200*view.scale)/2;view.y=(viewport.clientHeight-760*view.scale)/2;view.initialized=true;}
+    const applyView=(animate=false)=>{world.classList.toggle('animate-transform',animate);world.style.transform=`translate3d(${view.x}px,${view.y}px,0) scale(${view.scale})`;el('graphZoomLabel').textContent=`${Math.round(view.scale*100)}%`;if(animate)setTimeout(()=>world.classList.remove('animate-transform'),240);};
+    const updateEdges=id=>{$$('.graph-edge',world).forEach(line=>{if(id&&line.dataset.graphSource!==id&&line.dataset.graphTarget!==id)return;const a=state.documentGraphPositions[line.dataset.graphSource],b=state.documentGraphPositions[line.dataset.graphTarget];if(a&&b){line.setAttribute('x1',a.x);line.setAttribute('y1',a.y);line.setAttribute('x2',b.x);line.setAttribute('y2',b.y);}});};
+    const focus=id=>{state.graphSelectedDocumentId=id;const related=new Set([id]);links.forEach(link=>{if(link.source===id)related.add(link.target);if(link.target===id)related.add(link.source);});$$('.graph-node',world).forEach(node=>{node.classList.toggle('selected',node.dataset.graphDocument===id);node.classList.toggle('faded',Boolean(id)&&!related.has(node.dataset.graphDocument));});$$('.graph-edge',world).forEach(line=>line.classList.toggle('faded',Boolean(id)&&!related.has(line.dataset.graphSource)&&!related.has(line.dataset.graphTarget)));};
+    const zoomAt=(nextScale,clientX,clientY,animate=true)=>{nextScale=Math.min(2.2,Math.max(.35,nextScale));const rect=viewport.getBoundingClientRect(),px=clientX-rect.left,py=clientY-rect.top,worldX=(px-view.x)/view.scale,worldY=(py-view.y)/view.scale;view.x=px-worldX*nextScale;view.y=py-worldY*nextScale;view.scale=nextScale;applyView(animate);};
+    applyView();focus(state.graphSelectedDocumentId);
+    viewport.addEventListener('wheel',event=>{event.preventDefault();zoomAt(view.scale*Math.exp(-event.deltaY*.0012),event.clientX,event.clientY,false);},{passive:false});
+    viewport.addEventListener('pointerdown',event=>{if(event.button!==0||event.target.closest('.graph-node'))return;const start={x:event.clientX,y:event.clientY,vx:view.x,vy:view.y};viewport.classList.add('panning');viewport.setPointerCapture(event.pointerId);const move=moveEvent=>{view.x=start.vx+moveEvent.clientX-start.x;view.y=start.vy+moveEvent.clientY-start.y;applyView();};const up=()=>{viewport.classList.remove('panning');viewport.removeEventListener('pointermove',move);viewport.removeEventListener('pointerup',up);viewport.removeEventListener('pointercancel',up);};viewport.addEventListener('pointermove',move);viewport.addEventListener('pointerup',up);viewport.addEventListener('pointercancel',up);});
+    $$('.graph-node',world).forEach(node=>node.addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();event.stopPropagation();const id=node.dataset.graphDocument,position=state.documentGraphPositions[id],start={x:event.clientX,y:event.clientY,nx:position.x,ny:position.y},moved={value:false};node.classList.add('dragging');node.setPointerCapture(event.pointerId);const move=moveEvent=>{const dx=(moveEvent.clientX-start.x)/view.scale,dy=(moveEvent.clientY-start.y)/view.scale;if(Math.abs(dx)+Math.abs(dy)>3)moved.value=true;position.x=start.nx+dx;position.y=start.ny+dy;node.style.left=`${position.x}px`;node.style.top=`${position.y}px`;updateEdges(id);};const up=()=>{node.classList.remove('dragging');node.removeEventListener('pointermove',move);node.removeEventListener('pointerup',up);node.removeEventListener('pointercancel',up);if(!moved.value){if(state.graphSelectedDocumentId===id){state.activeDocumentId=id;state.documentView='list';state.graphSelectedDocumentId=null;loadDocuments(true);}else focus(id);}};node.addEventListener('pointermove',move);node.addEventListener('pointerup',up);node.addEventListener('pointercancel',up);}));
+    $$('[data-graph-zoom]',shell).forEach(button=>button.addEventListener('click',()=>{const rect=viewport.getBoundingClientRect(),factor=button.dataset.graphZoom==='in'?1.2:1/1.2;zoomAt(view.scale*factor,rect.left+rect.width/2,rect.top+rect.height/2);}));
+    $('[data-graph-reset]',shell)?.addEventListener('click',()=>{const rect=viewport.getBoundingClientRect();view.scale=Math.min(.9,Math.max(.58,(rect.width-40)/1200));view.x=(rect.width-1200*view.scale)/2;view.y=(rect.height-760*view.scale)/2;applyView(true);});
+  }
+
+  function wireWikiLinks(content) {
+    $$('[data-wiki-document]',content).forEach(node=>node.addEventListener('click',()=>{state.activeDocumentId=node.dataset.wikiDocument;state.documentView='list';state.editingDocumentId=null;loadDocuments(true);}));
+    $$('[data-missing-document]',content).forEach(node=>node.addEventListener('click',()=>createMissingDocument(node.dataset.missingDocument)));
+  }
+
+  async function createMissingDocument(title) {
+    if(!isAdmin())return toast('Ask a project manager to create this document.');
+    if(!await requestConfirmation({title:`Create “${title}”?`,message:'This missing wiki link will become a project document.',confirmLabel:'Create document'}))return;
+    const result=await api(`/workspace/${state.project.id}/documents`,{method:'POST',body:JSON.stringify({title,content_md:`# ${title}\n`})});
+    if(!result.ok)return toast(result.data.error||'Could not create document.');
+    state.activeDocumentId=result.data.id;state.documentView='list';toast('Document created');await loadDocuments(true);
+  }
+
+  function wireWikiAutocomplete(documents) {
+    const textarea=el('documentContent'),menu=el('wikiAutocomplete');
+    if(!textarea||!menu)return;
+    const update=()=>{
+      const before=textarea.value.slice(0,textarea.selectionStart),match=before.match(/\[\[([^\]\n]*)$/);
+      if(!match){menu.hidden=true;return;}
+      const query=match[1].trim().toLowerCase();
+      const matches=documents.filter(document=>document.id!==state.activeDocumentId&&document.title.toLowerCase().includes(query)).slice(0,6);
+      menu.innerHTML=matches.map(document=>`<button type="button" data-wiki-suggestion="${esc(document.title)}">${esc(document.title)}</button>`).join('');
+      menu.hidden=!matches.length;
+      $$('[data-wiki-suggestion]',menu).forEach(button=>button.addEventListener('click',()=>{const start=textarea.selectionStart-match[0].length,end=textarea.selectionStart,title=button.dataset.wikiSuggestion;textarea.setRangeText(`[[${title}]]`,start,end,'end');menu.hidden=true;textarea.dispatchEvent(new Event('input'));textarea.focus();}));
+    };
+    textarea.addEventListener('input',update);textarea.addEventListener('click',update);textarea.addEventListener('blur',()=>setTimeout(()=>menu.hidden=true,120));
+  }
+
   async function loadDocuments(quiet = false) {
     const content=el('panelContent');
-    const result=await api(`/workspace/${state.project.id}/documents`);
+    const [result,graphResult]=await Promise.all([api(`/workspace/${state.project.id}/documents`),api(`/workspace/${state.project.id}/documents/graph`)]);
     if(!result.ok)return renderError(content,result.data.error);
-    const documents=result.data.items || [];
-    const documentUsage=result.data.usage;
+    const documents=result.data.items||[],documentUsage=result.data.usage,graph=graphResult.ok?graphResult.data:{nodes:[],links:[]};
     if(!documents.some(doc=>doc.id===state.activeDocumentId))state.activeDocumentId=documents[0]?.id||null;
     const selected=documents.find(doc=>doc.id===state.activeDocumentId);
-    const list=documents.map(doc=>`<button class="document-link ${doc.id===state.activeDocumentId?'active':''}" data-document-id="${esc(doc.id)}"><strong>${esc(doc.title)}</strong><small>Updated ${esc(fmtDate(doc.updated_at))}</small></button>`).join('');
-    let detail;
-    const editingDocument = selected && isAdmin() && state.editingDocumentId === selected.id;
-    const documentWordLimit = documentUsage.plan === 'free' ? 1028 : null;
-    const documentFooter = selected ? `<footer class="document-meta-footer"><span>Created by <strong>${esc(selected.created_by)}</strong></span><span>Last modified by <strong>${esc(selected.updated_by || selected.created_by)}</strong></span></footer>` : '';
-    if(editingDocument)detail=`<div class="document-editor"><input id="documentTitle" maxlength="32" value="${esc(selected.title)}"/><textarea id="documentContent" rows="18" placeholder="# Documentation">${esc(selected.content_md)}</textarea><div id="documentContentCount" class="content-counter" aria-live="polite"></div><div class="task-actions"><button id="saveDocument" class="btn btn-primary">Save document</button><button id="cancelDocumentEdit" class="btn btn-secondary">Cancel</button><button id="deleteDocument" class="btn btn-danger">Delete</button></div><h3>Preview</h3><div class="markdown document-preview">${renderMarkdown(selected.content_md)}</div>${documentFooter}</div>`;
-    else if(selected)detail=`<article class="document-reader"><div class="document-reader-head"><h1>${esc(selected.title)}</h1>${isAdmin()?'<button id="editDocument" class="btn btn-primary">Edit document</button>':''}</div><div class="markdown">${renderMarkdown(selected.content_md)}</div>${documentFooter}</article>`;
-    else detail=emptyInline('No documentation yet',isAdmin()?'Create the first Markdown document.':'Project admins have not added documentation yet.');
-    content.innerHTML=`<div class="toolbar documents-toolbar"><div></div><div class="task-filter"><span class="role-box">${documentUsage.limit===null?'Unlimited':`${documentUsage.current}/${documentUsage.limit} documents`}</span>${isAdmin()?'<button id="newDocument" class="btn btn-primary">+ New document</button>':''}</div></div><div class="documents-layout"><aside class="documents-list">${list||'<span class="muted">No documents</span>'}</aside><section class="panel-card">${detail}</section></div>`;
-    $$('[data-document-id]',content).forEach(node=>node.addEventListener('click',()=>{state.activeDocumentId=node.dataset.documentId;state.editingDocumentId=null;loadDocuments();}));
-    el('newDocument')?.addEventListener('click',openDocumentTitleDialog);
-    el('editDocument')?.addEventListener('click',()=>{state.editingDocumentId=state.activeDocumentId;loadDocuments();});
-    el('cancelDocumentEdit')?.addEventListener('click',()=>{state.editingDocumentId=null;loadDocuments();});
-    el('saveDocument')?.addEventListener('click',saveDocument);
-    el('deleteDocument')?.addEventListener('click',deleteDocument);
-    const updateDocumentCounter = value => {
-      const counter = el('documentContentCount');
-      if (!counter) return;
-      const words = String(value || '').trim() ? String(value).trim().split(/\s+/).length : 0;
-      const characters = String(value || '').length;
-      counter.textContent = documentWordLimit === null
-        ? `${characters.toLocaleString()} characters · ${words.toLocaleString()} words`
-        : `${characters.toLocaleString()} characters · ${words.toLocaleString()} / ${documentWordLimit.toLocaleString()} words`;
-      counter.classList.toggle('over-limit', documentWordLimit !== null && words > documentWordLimit);
-    };
-    const documentContent = el('documentContent');
-    if (documentContent) updateDocumentCounter(documentContent.value);
-    documentContent?.addEventListener('input', event => {
-      updateDocumentCounter(event.target.value);
-      const preview = $('.document-preview', content);
-      if (preview) preview.innerHTML = renderMarkdown(event.target.value);
-    });
+    const tabs=`<div class="document-view-tabs"><button class="${state.documentView==='list'?'active':''}" data-document-view="list"><i data-lucide="list"></i>List</button><button class="${state.documentView==='graph'?'active':''}" data-document-view="graph"><i data-lucide="share-2"></i>Graph</button></div>`;
+    const toolbar=`<div class="toolbar documents-toolbar"><div>${tabs}</div><div class="task-filter"><span class="role-box">${documentUsage.limit===null?'Unlimited':`${documentUsage.current}/${documentUsage.limit} documents`}</span>${isAdmin()?'<button id="newDocument" class="btn btn-primary">+ New document</button>':''}</div></div>`;
+    if(state.documentView==='graph'){
+      content.innerHTML=toolbar+documentGraphMarkup(graph.nodes,graph.links);
+      wireDocumentGraph(graph.nodes,graph.links);
+    }else{
+      const list=documents.map(doc=>`<button class="document-link ${doc.id===state.activeDocumentId?'active':''}" data-document-id="${esc(doc.id)}"><span class="document-file-icon"><i data-lucide="file-text"></i></span><span><strong>${esc(doc.title)}</strong><small>Updated ${esc(fmtDate(doc.updated_at))} by ${esc(doc.updated_by||doc.created_by)}</small></span></button>`).join('');
+      let detail;const editing=selected&&isAdmin()&&state.editingDocumentId===selected.id,wordLimit=documentUsage.plan==='free'?1028:null;
+      const footer=selected?`<footer class="document-meta-footer"><span>Created by <strong>${esc(selected.created_by)}</strong></span><span>Last modified by <strong>${esc(selected.updated_by||selected.created_by)}</strong></span></footer>`:'';
+      const mentions=selected?`<aside class="document-mentions"><section><h3>Links</h3>${selected.links.length?selected.links.map(link=>`<button data-wiki-document="${esc(link.id)}">→ ${esc(link.title)}</button>`).join(''):'<p>No outgoing links</p>'}${selected.unresolved_links.map(title=>`<button class="missing" data-missing-document="${esc(title)}">+ ${esc(title)}</button>`).join('')}</section><section><h3>Backlinks</h3>${selected.backlinks.length?selected.backlinks.map(link=>`<button data-wiki-document="${esc(link.id)}">← ${esc(link.title)}</button>`).join(''):'<p>No backlinks</p>'}</section></aside>`:'';
+      if(editing)detail=`<div class="document-editor-layout"><div class="document-editor"><input id="documentTitle" maxlength="32" value="${esc(selected.title)}"/><div class="wiki-editor-wrap"><textarea id="documentContent" rows="18" placeholder="# Documentation">${esc(selected.content_md)}</textarea><div id="wikiAutocomplete" class="wiki-autocomplete" hidden></div></div><div id="documentContentCount" class="content-counter" aria-live="polite"></div><div class="task-actions"><button id="saveDocument" class="btn btn-primary">Save document</button><button id="cancelDocumentEdit" class="btn btn-secondary">Cancel</button><button id="deleteDocument" class="btn btn-danger">Delete</button></div><h3>Preview</h3><div class="markdown document-preview">${renderDocumentMarkdown(selected.content_md,documents)}</div>${footer}</div>${mentions}</div>`;
+      else if(selected)detail=`<div class="document-reader-layout"><article class="document-reader"><div class="document-reader-head"><h1>${esc(selected.title)}</h1><div>${isAdmin()?'<button id="editDocument" class="btn btn-primary">Edit</button><button id="deleteDocument" class="btn btn-secondary">Delete</button>':''}</div></div><div class="markdown">${renderDocumentMarkdown(selected.content_md,documents)}</div>${footer}</article>${mentions}</div>`;
+      else detail=emptyInline('No documentation yet',isAdmin()?'Create the first Markdown document.':'Project admins have not added documentation yet.');
+      content.innerHTML=`${toolbar}<div class="documents-layout"><aside class="documents-list">${list||'<span class="muted">No documents</span>'}</aside><section class="panel-card">${detail}</section></div>`;
+      $$('[data-document-id]',content).forEach(node=>node.addEventListener('click',()=>{state.activeDocumentId=node.dataset.documentId;state.editingDocumentId=null;loadDocuments();}));
+      el('editDocument')?.addEventListener('click',()=>{state.editingDocumentId=state.activeDocumentId;loadDocuments();});
+      el('cancelDocumentEdit')?.addEventListener('click',()=>{state.editingDocumentId=null;loadDocuments();});
+      el('saveDocument')?.addEventListener('click',saveDocument);el('deleteDocument')?.addEventListener('click',deleteDocument);
+      const textarea=el('documentContent'),updateCounter=value=>{const counter=el('documentContentCount');if(!counter)return;const words=String(value||'').trim()?String(value).trim().split(/\s+/).length:0,characters=String(value||'').length;counter.textContent=wordLimit===null?`${characters.toLocaleString()} characters · ${words.toLocaleString()} words`:`${characters.toLocaleString()} characters · ${words.toLocaleString()} / ${wordLimit.toLocaleString()} words`;counter.classList.toggle('over-limit',wordLimit!==null&&words>wordLimit);};
+      if(textarea)updateCounter(textarea.value);textarea?.addEventListener('input',event=>{updateCounter(event.target.value);const preview=$('.document-preview',content);if(preview){preview.innerHTML=renderDocumentMarkdown(event.target.value,documents);wireWikiLinks(preview);}});wireWikiAutocomplete(documents);wireWikiLinks(content);
+    }
+    $$('[data-document-view]',content).forEach(node=>node.addEventListener('click',()=>{state.documentView=node.dataset.documentView;state.editingDocumentId=null;loadDocuments(true);}));
+    el('newDocument')?.addEventListener('click',openDocumentTitleDialog);window.lucide?.createIcons();
   }
 
   function openDocumentTitleDialog(){

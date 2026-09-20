@@ -64,7 +64,7 @@ def sessions_to_list(sessions):
             "started_at": session.started_at.isoformat(),
             "ended_at": session.ended_at.isoformat() if session.ended_at else None,
             "duration_sec": session.duration_seconds,
-            "active": session.ended_at is None,
+            "active": session.is_live,
             "events": events,
             "instance_events": instance_events,
         })
@@ -100,7 +100,7 @@ def project_overview(project_id):
             project_id=project_id,
             user_id=m.user_id
         ).all()
-        active = any(session.ended_at is None for session in sessions)
+        active = any(session.is_live for session in sessions)
         latest = max(sessions, key=lambda session: session.started_at) if sessions else None
         result.append({
             "user_id":  m.user_id,
@@ -108,7 +108,7 @@ def project_overview(project_id):
             "role":     m.role,
             "stats":    session_stats(sessions),
             "active":   active,
-            "last_seen": None if active or not latest else (latest.ended_at or latest.started_at).isoformat(),
+            "last_seen": None if active or not latest else latest.effective_end_at.isoformat(),
         })
 
     return jsonify({

@@ -1,5 +1,6 @@
+from flask import current_app
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 
 db = SQLAlchemy()
@@ -100,6 +101,7 @@ class Session(db.Model):
     project_id = db.Column(db.String(36), db.ForeignKey("projects.id"), nullable=False)
     user_id    = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
     started_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_heartbeat_at = db.Column(db.DateTime, nullable=True)
     ended_at   = db.Column(db.DateTime, nullable=True)
 
     project       = db.relationship("Project", back_populates="sessions")
@@ -108,10 +110,22 @@ class Session(db.Model):
     instance_events = db.relationship("InstanceEvent", back_populates="session", cascade="all, delete")
 
     @property
+    def is_live(self):
+        if self.ended_at:
+            return False
+        last_signal = self.last_heartbeat_at or self.started_at
+        stale_seconds = current_app.config.get("SESSION_STALE_SECONDS", 30)
+        return last_signal >= datetime.utcnow() - timedelta(seconds=stale_seconds)
+
+    @property
+    def effective_end_at(self):
+        if self.ended_at:
+            return self.ended_at
+        return self.last_heartbeat_at or self.started_at
+
+    @property
     def duration_seconds(self):
-        if not self.ended_at:
-            return int((datetime.utcnow() - self.started_at).total_seconds())
-        return int((self.ended_at - self.started_at).total_seconds())
+        return max(0, int((self.effective_end_at - self.started_at).total_seconds()))
 
 class ScriptEvent(db.Model):
     __tablename__ = "script_events"
@@ -179,6 +193,13 @@ class TaskAssignment(db.Model):
 
     task = db.relationship("Task", back_populates="assignments")
     user = db.relationship("User")
+
+
+class DocumentLink(db.Model):
+    __tablename__ = "document_links"
+    source_document_id = db.Column(db.String(36), db.ForeignKey("project_documents.id"), primary_key=True)
+    target_document_id = db.Column(db.String(36), db.ForeignKey("project_documents.id"), primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
 class ProjectDocument(db.Model):

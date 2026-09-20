@@ -126,6 +126,52 @@ def test_members_read_docs_but_only_admins_write(app):
     assert modified.get_json()["updated_by"] == "TeamMember"
 
 
+
+def test_document_wiki_links_graph_backlinks_and_studio_navigation(app):
+    owner, member, _, project, _ = setup_team(app)
+    base = f"/workspace/{project['id']}"
+    source = owner.post(f"{base}/documents", json={
+        "title": "Vehicle Systems",
+        "content_md": "Uses [[Vehicle Controller]] and [[Anti Cheat Design]].",
+    })
+    assert source.status_code == 201
+    assert source.get_json()["unresolved_links"] == ["Vehicle Controller", "Anti Cheat Design"]
+
+    target = owner.post(f"{base}/documents", json={
+        "title": "Vehicle Controller", "content_md": "# Controller",
+    })
+    assert target.status_code == 201
+    source_id, target_id = source.get_json()["id"], target.get_json()["id"]
+    documents = owner.get(f"{base}/documents").get_json()["items"]
+    refreshed_source = next(document for document in documents if document["id"] == source_id)
+    refreshed_target = next(document for document in documents if document["id"] == target_id)
+    assert refreshed_source["links"] == [{"id": target_id, "title": "Vehicle Controller"}]
+    assert refreshed_source["unresolved_links"] == ["Anti Cheat Design"]
+    assert refreshed_target["backlinks"] == [{"id": source_id, "title": "Vehicle Systems"}]
+
+    graph = owner.get(f"{base}/documents/graph").get_json()
+    assert {node["id"] for node in graph["nodes"]} == {source_id, target_id}
+    assert graph["links"] == [{"source": source_id, "target": target_id}]
+    assert owner.post(f"{base}/documents", json={"title": "vehicle controller"}).status_code == 409
+    renamed = owner.patch(f"{base}/documents/{target_id}", json={"title": "Controller Architecture"})
+    assert renamed.status_code == 200
+    after_rename = owner.get(f"{base}/documents").get_json()["items"]
+    renamed_source = next(document for document in after_rename if document["id"] == source_id)
+    assert "[[Controller Architecture]]" in renamed_source["content_md"]
+    assert renamed_source["links"] == [{"id": target_id, "title": "Controller Architecture"}]
+
+    token = issue_api_key(member)
+    studio_docs = member.get(
+        "/api/v1/documents", headers={"X-Project-ID": project["id"], "X-API-Key": token},
+    )
+    assert studio_docs.status_code == 200
+    assert {document["title"] for document in studio_docs.get_json()} == {"Vehicle Systems", "Controller Architecture"}
+
+    assert owner.delete(f"{base}/documents/{target_id}").status_code == 200
+    after_delete = owner.get(f"{base}/documents").get_json()["items"][0]
+    assert after_delete["links"] == []
+    assert "Controller Architecture" in after_delete["unresolved_links"]
+
 def test_free_limits_and_pro_unlimited(app, monkeypatch, issue_code):
     monkeypatch.setitem(PLAN_LIMITS["free"], "tasks", 1)
     monkeypatch.setitem(PLAN_LIMITS["free"], "documents", 1)

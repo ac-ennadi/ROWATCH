@@ -60,3 +60,29 @@ def test_studio_integration_is_part_of_project_settings_navigation(client):
     assert "Roblox Studio connection" in javascript
     assert "Currently online" in javascript
     assert "Last seen" in javascript
+
+
+def test_project_wiki_ui_exposes_list_graph_links_and_backlinks(client):
+    javascript = client.get("/app.js").get_data(as_text=True)
+    stylesheet = client.get("/app.css").get_data(as_text=True)
+    assert "documents/graph" in javascript
+    assert "wikiAutocomplete" in javascript
+    assert "Backlinks" in javascript
+    assert "unresolved_links" in javascript
+    assert "data-graph-document" in javascript
+    assert "wireDocumentGraph" in javascript
+    assert "data-graph-zoom" in javascript
+    assert "addEventListener('wheel'" in javascript
+    assert "addEventListener('pointerdown'" in javascript
+    assert ".document-graph" in stylesheet
+    assert ".document-graph-world" in stylesheet
+    assert "touch-action:none" in stylesheet
+
+
+def test_task_toolbar_hides_shown_and_unlimited_indicators(client):
+    javascript = client.get("/app.js").get_data(as_text=True)
+    assert "shown ·" not in javascript
+    assert "taskUsage.limit === null ? ''" in javascript
+    usage = javascript.index("${taskUsageBadge}<label>Filter by assignee")
+    add_column = javascript.index("addTaskColumnButton", usage)
+    assert usage < add_column

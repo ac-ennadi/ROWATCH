@@ -6,6 +6,25 @@ from datetime import datetime
 
 events_bp = Blueprint("events", __name__, url_prefix="/api/events")
 
+
+def _live_session(session_id):
+    session = Session.query.filter_by(
+        id=session_id,
+        project_id=g.project.id,
+        user_id=g.user.id,
+        ended_at=None,
+    ).first()
+    if session and not session.is_live:
+        session.ended_at = session.effective_end_at
+        db.session.commit()
+        return None
+    return session
+
+
+def _touch_session(session):
+    session.last_heartbeat_at = datetime.utcnow()
+
+
 @events_bp.route("/session/start", methods=["POST"])
 @plugin_auth
 def session_start():
@@ -16,9 +35,10 @@ def session_start():
         ended_at=None
     ).first()
     if open_session:
-        open_session.ended_at = datetime.utcnow()
+        open_session.ended_at = datetime.utcnow() if open_session.is_live else open_session.effective_end_at
 
-    session = Session(project_id=g.project.id, user_id=g.user.id)
+    now = datetime.utcnow()
+    session = Session(project_id=g.project.id, user_id=g.user.id, started_at=now, last_heartbeat_at=now)
     db.session.add(session)
     db.session.commit()
     publish_project_update(g.project.id, "session_started", {"username": g.user.username})
@@ -41,7 +61,7 @@ def session_end():
     if session.ended_at:
         return jsonify({"error": "Session already ended"}), 400
 
-    session.ended_at = datetime.utcnow()
+    session.ended_at = datetime.utcnow() if session.is_live else session.effective_end_at
     db.session.commit()
     publish_project_update(g.project.id, "session_ended", {"username": g.user.username})
 
@@ -55,14 +75,11 @@ def session_end():
 @plugin_auth
 def session_heartbeat():
     data = request.get_json(silent=True) or {}
-    session = Session.query.filter_by(
-        id=data.get("session_id"),
-        project_id=g.project.id,
-        user_id=g.user.id,
-        ended_at=None,
-    ).first()
+    session = _live_session(data.get("session_id"))
     if not session:
-        return jsonify({"error": "Active session not found"}), 404
+        return jsonify({"error": "Studio session expired; start a new session"}), 409
+    _touch_session(session)
+    db.session.commit()
     publish_project_update(g.project.id, "session_heartbeat", {"username": g.user.username})
     return jsonify({"ok": True, "duration_sec": session.duration_seconds})
 
@@ -76,14 +93,10 @@ def script_open():
     if not session_id or not script_name:
         return jsonify({"error": "session_id and script required"}), 400
 
-    session = Session.query.filter_by(
-        id=session_id,
-        project_id=g.project.id,
-        user_id=g.user.id,
-        ended_at=None,
-    ).first()
+    session = _live_session(session_id)
     if not session:
         return jsonify({"error": "Active session not found"}), 404
+    _touch_session(session)
 
     event = ScriptEvent(
         session_id=session_id,
@@ -113,14 +126,10 @@ def script_close():
     if not session_id or not script_name:
         return jsonify({"error": "session_id and script required"}), 400
 
-    session = Session.query.filter_by(
-        id=session_id,
-        project_id=g.project.id,
-        user_id=g.user.id,
-        ended_at=None,
-    ).first()
+    session = _live_session(session_id)
     if not session:
         return jsonify({"error": "Active session not found"}), 404
+    _touch_session(session)
 
     event = ScriptEvent(
         session_id=session_id,
@@ -145,14 +154,10 @@ def instance_change():
     if not session_id:
         return jsonify({"error": "session_id required"}), 400
 
-    session = Session.query.filter_by(
-        id=session_id,
-        project_id=g.project.id,
-        user_id=g.user.id,
-        ended_at=None,
-    ).first()
+    session = _live_session(session_id)
     if not session:
         return jsonify({"error": "Active session not found"}), 404
+    _touch_session(session)
 
     created = []
     for item in items[:100]:

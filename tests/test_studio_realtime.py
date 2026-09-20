@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from realtime import socketio
 from conftest import issue_api_key
 from models import db, Project, ProjectMember, ScriptEvent, Session, User
@@ -89,6 +90,35 @@ def test_session_end_and_script_events_are_scoped_to_selected_project(app, regis
 
     assert registered_client.post("/api/events/session/end", headers=project_a_headers, json={"session_id": session_id}).status_code == 200
 
+
+
+def test_abandoned_plugin_session_is_offline_and_capped_at_last_heartbeat(app, registered_client, project):
+    api_key = issue_api_key(registered_client)
+    headers = {"X-Project-ID": project["id"], "X-API-Key": api_key}
+    now = datetime.utcnow()
+    with app.app_context():
+        owner = User.query.filter_by(username="Owner").one()
+        abandoned = Session(
+            project_id=project["id"],
+            user_id=owner.id,
+            started_at=now - timedelta(hours=17),
+            last_heartbeat_at=now - timedelta(hours=16),
+        )
+        db.session.add(abandoned)
+        db.session.commit()
+        session_id = abandoned.id
+
+    member = registered_client.get(f"/projects/{project['id']}/members").get_json()[0]
+    assert member["active"] is False
+    overview = registered_client.get(f"/dashboard/{project['id']}/overview").get_json()
+    assert 3599 <= overview["members"][0]["stats"]["total_seconds"] <= 3601
+
+    expired = registered_client.post("/api/events/session/heartbeat", headers=headers, json={"session_id": session_id})
+    assert expired.status_code == 409
+    with app.app_context():
+        repaired = db.session.get(Session, session_id)
+        assert repaired.ended_at == repaired.last_heartbeat_at
+        assert repaired.duration_seconds == 3600
 
 def test_script_close_rejects_an_ended_session(app, registered_client, project):
     api_key = issue_api_key(registered_client)

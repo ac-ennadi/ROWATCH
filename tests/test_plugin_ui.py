@@ -49,6 +49,7 @@ def test_plugin_core_tracking_and_multi_project_behavior_remain_connected():
         "/api/v1/events/script/close",
         "/api/v1/events/instance/change",
         "/api/v1/tasks",
+        "/api/v1/documents",
     ):
         assert endpoint in lua
     assert 'plugin:GetSetting("rw_projects")' in lua

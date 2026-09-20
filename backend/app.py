@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import urlsplit
 import os
 import threading
 import time
@@ -36,7 +37,7 @@ def create_app(test_config=None):
         from blueprints.events import events_bp
         from blueprints.dashboard import dashboard_bp
         from blueprints.payments import payments_bp
-        from blueprints.workspace import workspace_bp, plugin_tasks_bp
+        from blueprints.workspace import plugin_documents_bp, plugin_tasks_bp, workspace_bp
 
         app.register_blueprint(auth_bp)
         app.register_blueprint(projects_bp)
@@ -46,15 +47,19 @@ def create_app(test_config=None):
         app.register_blueprint(payments_bp)
         app.register_blueprint(workspace_bp)
         app.register_blueprint(plugin_tasks_bp)
+        app.register_blueprint(plugin_documents_bp)
 
         # Versioned Studio API. Keep the original routes registered as the
         # permanent legacy contract for already-installed plugin versions.
         app.register_blueprint(events_bp, url_prefix="/api/v1/events", name_prefix="v1")
         app.register_blueprint(plugin_projects_bp, url_prefix="/api/v1/plugin", name_prefix="v1")
         app.register_blueprint(plugin_tasks_bp, url_prefix="/api/v1/tasks", name_prefix="v1")
+        app.register_blueprint(plugin_documents_bp, url_prefix="/api/v1/documents", name_prefix="v1")
         db.create_all()
         ensure_tracking_consent_columns()
+        ensure_session_heartbeat_schema()
         ensure_document_editor_column()
+        ensure_document_link_schema()
         ensure_task_board_schema()
         migrate_legacy_project_plans()
         bootstrap_admin_account()
@@ -62,11 +67,15 @@ def create_app(test_config=None):
     @app.before_request
     def validate_browser_origin():
         origin = request.headers.get("Origin")
-        if not origin or origin.rstrip("/") == request.host_url.rstrip("/"):
+        if not origin:
+            return None
+        # HTTPS is commonly terminated by the reverse proxy. Compare the public
+        # host and port rather than Flask's internal HTTP-facing scheme.
+        if urlsplit(origin).netloc.lower() == request.host.lower():
             return None
         trusted = set(app.config.get("TRUSTED_ORIGINS") or ())
         if not app.config.get("CORS_ENABLED") or origin.rstrip("/") not in trusted:
-            return jsonify({"error": "Cross-origin requests are disabled or the origin is not trusted"}), 403
+            return jsonify({"error": "Untrusted request origin"}), 403
 
     @app.after_request
     def security_headers(response):
@@ -138,6 +147,33 @@ def ensure_task_board_schema():
         for index, task_item in enumerate(unplaced):
             task_item.column_id = columns[0].id
             task_item.position = index
+    db.session.commit()
+
+
+def ensure_session_heartbeat_schema():
+    """Cap legacy abandoned sessions at their latest recorded plugin activity."""
+    session_columns = {column["name"] for column in inspect(db.engine).get_columns("sessions")}
+    if "last_heartbeat_at" not in session_columns:
+        db.session.execute(text("ALTER TABLE sessions ADD COLUMN last_heartbeat_at DATETIME"))
+        db.session.commit()
+
+    from models import InstanceEvent, ScriptEvent, Session
+    for session in Session.query.filter_by(ended_at=None).all():
+        latest_script = db.session.query(db.func.max(ScriptEvent.occurred_at)).filter_by(session_id=session.id).scalar()
+        latest_instance = db.session.query(db.func.max(InstanceEvent.occurred_at)).filter_by(session_id=session.id).scalar()
+        last_signal = max((value for value in (session.last_heartbeat_at, latest_script, latest_instance, session.started_at) if value), default=session.started_at)
+        session.last_heartbeat_at = last_signal
+        session.ended_at = last_signal
+    db.session.commit()
+
+
+def ensure_document_link_schema():
+    """Resolve wiki links for documents created before the relationship table existed."""
+    from blueprints.workspace import _sync_project_document_links
+    from models import Project
+
+    for project in Project.query.all():
+        _sync_project_document_links(project.id)
     db.session.commit()
 
 

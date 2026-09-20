@@ -160,6 +160,8 @@ local order = 0
 local showProjects
 local showActive
 local showTasks
+local showDocs
+local showDocument
 local showAuth
 local showSettings
 local redraw
@@ -577,7 +579,16 @@ task.spawn(function()
             flushInstanceQueue()
             if os.time() - lastHeartbeat >= 5 then
                 lastHeartbeat = os.time()
-                apiCall(activeProfile, "/api/v1/events/session/heartbeat", "POST", {session_id = sessionId})
+                local _, heartbeatError = apiCall(activeProfile, "/api/v1/events/session/heartbeat", "POST", {session_id = sessionId})
+                if heartbeatError then
+                    finishAllDocumentTracking()
+                    sessionId = nil
+                    sessionStart = nil
+                    activeProfile = nil
+                    instanceQueue = {}
+                    documents = {}
+                    showProjects("Studio session expired. Start a new session to continue tracking.", true)
+                end
             end
         end
     end
@@ -711,6 +722,76 @@ showTasks = function(profile, message)
     end)
 end
 
+showDocument = function(profile, projectDocs, document)
+    redraw = function() showDocument(profile, projectDocs, document) end
+    clear()
+    header("Project docs")
+    intro(profile.name or "Project", document.title or "Document", "Read-only project documentation from RoWatch.")
+
+    local contentCard = card(nil, 14, 10)
+    label(document.title or "Document", 30, COLORS.text, 16, true, contentCard)
+    local content = document.content_md or ""
+    content = content:gsub("%[%[([^%]]+)%]%]", "%1 ->")
+    content = content:gsub("^#+%s*", ""):gsub("\n#+%s*", "\n")
+    local lineCount = 1
+    for _ in content:gmatch("\n") do lineCount += 1 end
+    local contentHeight = math.clamp(lineCount * 18 + math.ceil(#content / 42) * 12, 54, 430)
+    label(content ~= "" and content or "This document is empty.", contentHeight, content ~= "" and COLORS.text or COLORS.muted, 11, false, contentCard)
+
+    if document.links and #document.links > 0 then
+        label("LINKED DOCUMENTS", 20, COLORS.muted, 9, true)
+        for _, linkItem in ipairs(document.links) do
+            local linkedButton = button(linkItem.title .. "  ->", COLORS.panelAlt, COLORS.accent, 36)
+            linkedButton.MouseButton1Click:Connect(function()
+                for _, candidate in ipairs(projectDocs) do
+                    if candidate.id == linkItem.id then
+                        showDocument(profile, projectDocs, candidate)
+                        return
+                    end
+                end
+                showDocs(profile, "That linked document no longer exists")
+            end)
+        end
+    end
+
+    local back = button("<  Back to project docs", COLORS.panel, COLORS.muted, 36)
+    back.MouseButton1Click:Connect(function() showDocs(profile) end)
+end
+
+showDocs = function(profile, message)
+    redraw = function() showDocs(profile) end
+    clear()
+    header("Project docs")
+    if message then banner(message, "error") end
+    intro(profile.name or "Project", "Project docs", "Read and follow linked project documentation.")
+
+    local projectDocs, err = apiCall(profile, "/api/v1/documents", "GET")
+    if not projectDocs then
+        banner("Could not load docs: " .. (err or "unknown error"), "error")
+    elseif #projectDocs == 0 then
+        local empty = card()
+        label("No project docs", 28, COLORS.text, 14, true, empty)
+        label("Documents created on the RoWatch website will appear here.", 38, COLORS.muted, 10, false, empty)
+    else
+        label(tostring(#projectDocs) .. " DOCUMENT" .. (#projectDocs == 1 and "" or "S"), 18, COLORS.muted, 9, true)
+        for _, document in ipairs(projectDocs) do
+            local documentCard = card()
+            local openButton = button(document.title or "Document", COLORS.panelAlt, COLORS.text, 40, documentCard)
+            openButton.TextXAlignment = Enum.TextXAlignment.Left
+            addPadding(openButton, 11, 0)
+            label("Updated " .. tostring(document.updated_at or "recently"), 20, COLORS.muted, 9, false, documentCard)
+            openButton.MouseButton1Click:Connect(function() showDocument(profile, projectDocs, document) end)
+        end
+    end
+
+    local refresh = button("Refresh docs", COLORS.panelAlt, COLORS.text, 34)
+    refresh.MouseButton1Click:Connect(function() showDocs(profile) end)
+    local back = button(sessionId and "<  Back to live session" or "<  Back to projects", COLORS.panel, COLORS.muted, 36)
+    back.MouseButton1Click:Connect(function()
+        if sessionId then showActive() else showProjects() end
+    end)
+end
+
 showProjects = function(message, isError)
     redraw = function() showProjects() end
     clear()
@@ -748,6 +829,8 @@ showProjects = function(message, isError)
 
         local tasksButton = button("My tasks", COLORS.panelAlt, COLORS.text, 34, profileCard)
         tasksButton.MouseButton1Click:Connect(function() showTasks(profile) end)
+        local docsButton = button("Project docs", COLORS.panelAlt, COLORS.text, 34, profileCard)
+        docsButton.MouseButton1Click:Connect(function() showDocs(profile) end)
     end
 
     local refresh = button("Refresh projects", COLORS.panelAlt, COLORS.text, 38)
@@ -789,6 +872,8 @@ showActive = function()
 
     local tasksButton = button("View my assigned tasks", COLORS.panel, COLORS.accent, 38)
     tasksButton.MouseButton1Click:Connect(function() showTasks(activeProfile) end)
+    local docsButton = button("View project docs", COLORS.panel, COLORS.accent, 38)
+    docsButton.MouseButton1Click:Connect(function() showDocs(activeProfile) end)
     local finish = button("End and save session", COLORS.badSoft, COLORS.bad, 42)
     finish.MouseButton1Click:Connect(function()
         finish.Text = "Saving session..."

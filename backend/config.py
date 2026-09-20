@@ -7,6 +7,7 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JWT_SECRET          = os.environ.get("JWT_SECRET")
     SESSION_DAYS        = int(os.environ.get("ROWATCH_SESSION_DAYS", "7"))
+    SESSION_STALE_SECONDS = max(15, int(os.environ.get("ROWATCH_SESSION_STALE_SECONDS", "30")))
     JWT_EXPIRY          = timedelta(days=SESSION_DAYS)
     TRACKING_CONSENT_VERSION = os.environ.get("ROWATCH_TRACKING_CONSENT_VERSION", "2026-08-25")
     MAX_CONTENT_LENGTH = int(os.environ.get("ROWATCH_MAX_REQUEST_BYTES", str(1024 * 1024)))

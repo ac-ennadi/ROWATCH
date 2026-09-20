@@ -98,9 +98,9 @@ def list_members(project_id):
     result = []
     for member in members:
         sessions = sessions_by_user.get(member.user_id, [])
-        active = any(session.ended_at is None for session in sessions)
+        active = any(session.is_live for session in sessions)
         latest = sessions[0] if sessions else None
-        last_seen = None if active or not latest else (latest.ended_at or latest.started_at).isoformat()
+        last_seen = None if active or not latest else latest.effective_end_at.isoformat()
         result.append({
             "user_id": member.user_id,
             "username": member.user.username,
