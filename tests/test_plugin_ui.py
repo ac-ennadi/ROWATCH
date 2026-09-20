@@ -33,9 +33,12 @@ def test_plugin_tasks_are_compact_incomplete_first_toggles():
     lua = source()
     assert "table.sort(tasks" in lua
     assert "return not a.my_completed" in lua
-    assert 'taskButton.Text = "•  " .. taskItem.title' in lua
+    assert '(taskItem.my_completed and "✓  " or "•  ") .. taskItem.title' in lua
     assert "taskItem.my_completed and COLORS.good or COLORS.text" in lua
-    assert "task.delay(0.12, function() showTasks(profile) end)" in lua
+    assert "taskItem.my_completed = nextCompleted" in lua
+    assert "updateTaskVisual(true)" in lua
+    assert "TweenService:Create(taskButton" in lua
+    assert "task.delay(0.12, function() showTasks(profile) end)" not in lua
     assert "taskItem.description_md" not in lua
     assert "assignees complete" not in lua
 
@@ -83,6 +86,9 @@ def test_project_selection_only_starts_sessions_and_api_key_is_contained():
     assert "Ready to track" not in lua
     assert lua.count('local tasksButton = button("View my assigned tasks"') == 1
     assert lua.count('local docsButton = button("View project docs"') == 1
+    assert "local projectRow = actionRow(profileCard, 40)" in lua
+    assert "projectName.Size = UDim2.new(0.62, -4, 1, 0)" in lua
+    assert "startButton.Size = UDim2.new(0.38, -3, 1, 0)" in lua
     assert 'node.TextTruncate = Enum.TextTruncate.AtEnd' in lua
     assert 'node.ClipsDescendants = true' in lua
     assert 'node.MultiLine = false' in lua
