@@ -9,7 +9,7 @@ A clean RoWatch landing page + authenticated project dashboard for Roblox Studio
   - login / registration
   - **Login → My Projects → Project Dashboard** flow
   - persistent project sidebar
-  - Overview, Activity, Analytics, Members, Studio Integration, Project Settings
+  - Overview, Activity, Tasks, Documentation, Analytics, Members, Studio Integration, Project Settings
   - **← My Projects** sidebar action
   - account controls
   - light + dark themes
@@ -17,6 +17,8 @@ A clean RoWatch landing page + authenticated project dashboard for Roblox Studio
 - `backend/` — Flask + SQLAlchemy API
   - JWT cookie auth
   - project CRUD and roles
+  - multi-assignee tasks with per-member completion
+  - Markdown project documentation
   - dashboard analytics with authenticated Socket.IO live updates
   - Studio plugin event API for scripts, parts, and UI components
   - demo plan checkout
@@ -106,6 +108,15 @@ Landing
 - `DELETE /projects/<id>` owner only
 - member/invite/role/key routes retained
 
+### Team workspace
+- `GET/POST /workspace/<id>/tasks`
+- `PATCH/DELETE /workspace/<id>/tasks/<task_id>`
+- `POST /workspace/<id>/tasks/<task_id>/complete`
+- `GET/POST /workspace/<id>/documents`
+- `PATCH/DELETE /workspace/<id>/documents/<document_id>`
+- `GET /api/tasks` Studio member task list
+- `POST /api/tasks/<task_id>/complete` Studio completion toggle
+
 ### Dashboard
 - `GET /dashboard/<id>/me`
 - `GET /dashboard/<id>/overview`
@@ -140,6 +151,15 @@ The Studio plugin stores multiple validated project profiles in plugin settings.
 Use **Add Project** once per project, then start future sessions from its project
 button. Tracking runs only during an active session and records `BasePart` plus
 `GuiObject`/`LayerCollector` additions and removals.
+
+
+Tasks can be assigned to multiple members. Each assignment has its own completion
+state, so shared work remains open for every member who has not checked it off. The
+Studio plugin shows only tasks assigned to the saved profile username and allows
+that member to complete or reopen them.
+
+Documentation supports multiple Markdown pages with a live rendered preview. All
+project members can read tasks and documents; owners and co-admins manage them.
 
 ## Production notes
 

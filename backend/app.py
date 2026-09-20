@@ -31,12 +31,15 @@ def create_app(test_config=None):
         from blueprints.events import events_bp
         from blueprints.dashboard import dashboard_bp
         from blueprints.payments import payments_bp
+        from blueprints.workspace import workspace_bp, plugin_tasks_bp
 
         app.register_blueprint(auth_bp)
         app.register_blueprint(projects_bp)
         app.register_blueprint(events_bp)
         app.register_blueprint(dashboard_bp)
         app.register_blueprint(payments_bp)
+        app.register_blueprint(workspace_bp)
+        app.register_blueprint(plugin_tasks_bp)
         db.create_all()
 
     @app.get("/health")

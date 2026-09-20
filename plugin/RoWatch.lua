@@ -75,6 +75,7 @@ local order = 0
 local showProjects
 local showAddProject
 local showActive
+local showTasks
 
 local function saveProfiles()
     plugin:SetSetting("rw_projects", profiles)
@@ -306,6 +307,53 @@ task.spawn(function()
     end
 end)
 
+showTasks = function(profile, message)
+    clear()
+    header((profile.name or "Project") .. " • My tasks")
+    if message then label(message, 28, COLORS.good, 11, false) end
+    label("Only tasks assigned to @" .. profile.username .. " are shown.", 30, COLORS.muted, 10, false)
+
+    local tasks, err = apiCall(profile, "/api/tasks", "GET")
+    if not tasks then
+        label("Could not load tasks: " .. (err or "unknown error"), 40, COLORS.bad, 11, false)
+    elseif #tasks == 0 then
+        label("No tasks assigned", 30, COLORS.text, 14, true)
+        label("Tasks assigned from the RoWatch website will appear here.", 38, COLORS.muted, 10, false)
+    else
+        for _, taskItem in ipairs(tasks) do
+            local prefix = taskItem.my_completed and "✓  " or "○  "
+            local taskButton = button(prefix .. taskItem.title, taskItem.my_completed and COLORS.panelAlt or COLORS.panel, taskItem.my_completed and COLORS.good or COLORS.text, 42)
+            taskButton.TextXAlignment = Enum.TextXAlignment.Left
+            local buttonPadding = Instance.new("UIPadding")
+            buttonPadding.PaddingLeft = UDim.new(0, 10)
+            buttonPadding.PaddingRight = UDim.new(0, 10)
+            buttonPadding.Parent = taskButton
+            taskButton.MouseButton1Click:Connect(function()
+                local _, toggleError = apiCall(profile, "/api/tasks/" .. taskItem.id .. "/complete", "POST", {
+                    completed = not taskItem.my_completed,
+                })
+                if toggleError then
+                    showTasks(profile, "Could not update: " .. toggleError)
+                else
+                    showTasks(profile, taskItem.my_completed and "Task reopened" or "Task completed")
+                end
+            end)
+            if taskItem.description_md and taskItem.description_md ~= "" then
+                local plain = taskItem.description_md:gsub("[#*_`]", ""):gsub("%s+", " ")
+                if #plain > 100 then plain = plain:sub(1, 97) .. "..." end
+                label(plain, 34, COLORS.muted, 10, false)
+            end
+            local completion = tostring(taskItem.completed_count) .. "/" .. tostring(#taskItem.assignments) .. " assignees complete"
+            label(completion, 18, COLORS.muted, 9, false)
+        end
+    end
+
+    local back = button(sessionId and "Back to active session" or "Back to projects", COLORS.panel, COLORS.text, 36)
+    back.MouseButton1Click:Connect(function()
+        if sessionId then showActive() else showProjects() end
+    end)
+end
+
 showProjects = function(message)
     clear()
     header("Choose a project to start tracking")
@@ -333,6 +381,8 @@ showProjects = function(message)
         end)
 
         local detail = label("@" .. profile.username .. "  •  saved project", 18, COLORS.muted, 10, false)
+        local tasksButton = button("My assigned tasks", COLORS.panel, COLORS.accent, 32)
+        tasksButton.MouseButton1Click:Connect(function() showTasks(profile) end)
         local remove = button("Remove " .. (profile.name or "project"), COLORS.panel, COLORS.bad, 30)
         remove.MouseButton1Click:Connect(function()
             table.remove(profiles, index)
@@ -395,6 +445,8 @@ showActive = function()
     local timer = label("00h 00m 00s", 52, COLORS.text, 25, true)
     label("Tracking scripts, parts, and UI components", 24, COLORS.muted, 10, false)
 
+    local tasksButton = button("MY ASSIGNED TASKS", COLORS.panel, COLORS.accent, 36)
+    tasksButton.MouseButton1Click:Connect(function() showTasks(activeProfile) end)
     local finish = button("■  END SESSION", COLORS.panel, COLORS.bad, 40)
     finish.MouseButton1Click:Connect(function()
         flushInstanceQueue()

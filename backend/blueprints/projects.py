@@ -158,6 +158,13 @@ def remove_member(project_id, user_id):
     member = ProjectMember.query.filter_by(project_id=project_id, user_id=user_id).first()
     if not member or member.role == "owner":
         return jsonify({"error": "The owner cannot be removed"}), 400
+    from models import Task, TaskAssignment
+    task_ids = [task.id for task in Task.query.filter_by(project_id=project_id).all()]
+    if task_ids:
+        TaskAssignment.query.filter(
+            TaskAssignment.task_id.in_(task_ids),
+            TaskAssignment.user_id == user_id,
+        ).delete(synchronize_session=False)
     db.session.delete(member)
     db.session.commit()
     return jsonify({"ok": True})
