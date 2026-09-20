@@ -480,8 +480,14 @@
 
   async function loadMemberOverview() {
     const content = el('panelContent');
-    const {ok, data} = await api(`/dashboard/${state.project.id}/me`);
-    if (!ok) return renderError(content, data.error);
+    const [myResult, membersResult] = await Promise.all([
+      api(`/dashboard/${state.project.id}/me`),
+      api(`/projects/${state.project.id}/members`),
+    ]);
+    if (!myResult.ok) return renderError(content, myResult.data.error);
+    const data = myResult.data;
+    const members = membersResult.ok ? membersResult.data : [];
+    const onlineMembers = members.filter(member => member.active);
     const s = data.stats;
     content.innerHTML = `
       <div class="kpi-grid">
@@ -492,7 +498,10 @@
         ${kpi('Parts', compactNumber(s.parts_added), `${compactNumber(s.parts_removed)} removed`)}
         ${kpi('UI components', compactNumber(s.ui_added), `${compactNumber(s.ui_removed)} removed`)}
       </div>
-      <section class="panel-card"><div class="panel-card-head"><div><h2>My session history</h2><p>Your activity in ${esc(state.project.name)}.</p></div></div>${sessionTable(data.sessions || [])}</section>`;
+      <div class="dashboard-grid member-overview-grid">
+        <section class="panel-card"><div class="panel-card-head"><div><h2>My session history</h2><p>Your activity in ${esc(state.project.name)}.</p></div></div>${sessionTable(data.sessions || [])}</section>
+        <section class="panel-card online-members-panel"><div class="panel-card-head"><div><h2>Currently online</h2><p>Active in this project now.</p></div><span class="online-count">${onlineMembers.length}</span></div>${onlineMembers.length?`<div class="online-member-list">${onlineMembers.map(member=>`<div class="online-member"><span class="presence-dot"></span><strong>${esc(member.username)}</strong><small>${esc(roleName(member.role))}</small></div>`).join('')}</div>`:emptyInline('Nobody online','No project member has an active Studio session.')}</section>
+      </div>`;
   }
 
   async function renderOverviewCharts(members) {

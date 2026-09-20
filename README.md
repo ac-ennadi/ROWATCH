@@ -217,6 +217,7 @@ A failing test makes the GitHub Actions check fail.
 
 Before production:
 - set strong `SECRET_KEY` and `JWT_SECRET`
+- keep `ROWATCH_CORS_ENABLED=0` for same-origin-only browser access; to enable cross-origin access, set it to `1` and configure a comma-separated `ROWATCH_TRUSTED_ORIGINS` allowlist (for example `https://app.example.com,https://admin.example.com`)
 - use Postgres through `DATABASE_URL`
 - replace the dummy payment endpoint with your payment provider
 - serve Flask with gunicorn/uwsgi behind a reverse proxy

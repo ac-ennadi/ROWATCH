@@ -1,13 +1,27 @@
 from conftest import issue_api_key
 
 
-def test_security_headers_and_cross_origin_posts(client):
+def test_security_headers_and_cross_origin_posts(client, app):
     response = client.get("/")
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["X-Frame-Options"] == "DENY"
     assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
+
+    app.config.update(CORS_ENABLED=False, TRUSTED_ORIGINS=("https://dashboard.example",))
+    disabled = client.post("/auth/login", headers={"Origin": "https://dashboard.example"}, json={"username": "x", "password": "x"})
+    assert disabled.status_code == 403
+    assert "Access-Control-Allow-Origin" not in disabled.headers
+
+    app.config.update(CORS_ENABLED=True, TRUSTED_ORIGINS=("https://dashboard.example",))
+    trusted = client.post("/auth/login", headers={"Origin": "https://dashboard.example"}, json={"username": "x", "password": "x"})
+    assert trusted.status_code == 401
+    assert trusted.headers["Access-Control-Allow-Origin"] == "https://dashboard.example"
+    assert trusted.headers["Access-Control-Allow-Credentials"] == "true"
+    assert "Origin" in trusted.headers["Vary"]
+
     blocked = client.post("/auth/login", headers={"Origin": "https://evil.example"}, json={"username": "x", "password": "x"})
     assert blocked.status_code == 403
+    assert "Access-Control-Allow-Origin" not in blocked.headers
 
 
 def test_login_is_rate_limited(client):

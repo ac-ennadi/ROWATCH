@@ -11,6 +11,7 @@ class Config:
     TRACKING_CONSENT_VERSION = os.environ.get("ROWATCH_TRACKING_CONSENT_VERSION", "2026-08-25")
     MAX_CONTENT_LENGTH = int(os.environ.get("ROWATCH_MAX_REQUEST_BYTES", str(1024 * 1024)))
     SESSION_COOKIE_SECURE = os.environ.get("ROWATCH_SECURE_COOKIES", "1") == "1"
+    CORS_ENABLED = os.environ.get("ROWATCH_CORS_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
     TRUSTED_ORIGINS = tuple(v.strip().rstrip("/") for v in os.environ.get("ROWATCH_TRUSTED_ORIGINS", "").split(",") if v.strip())
 
 PLAN_PRICES = {

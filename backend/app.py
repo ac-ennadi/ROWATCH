@@ -27,7 +27,8 @@ def create_app(test_config=None):
             if not value or len(value) < 32 or value.startswith("change-this"):
                 raise RuntimeError(f"{name} must be a unique random value of at least 32 characters")
     db.init_app(app)
-    socketio.init_app(app)
+    socket_origins = list(app.config.get("TRUSTED_ORIGINS") or ()) if app.config.get("CORS_ENABLED") else []
+    socketio.init_app(app, cors_allowed_origins=socket_origins)
 
     with app.app_context():
         from blueprints.auth import auth_bp
@@ -60,15 +61,23 @@ def create_app(test_config=None):
 
     @app.before_request
     def validate_browser_origin():
-        if request.method in {"GET", "HEAD", "OPTIONS"} or request.headers.get("X-API-Key"):
-            return None
         origin = request.headers.get("Origin")
+        if not origin or origin.rstrip("/") == request.host_url.rstrip("/"):
+            return None
         trusted = set(app.config.get("TRUSTED_ORIGINS") or ())
-        if origin and origin.rstrip("/") != request.host_url.rstrip("/") and origin.rstrip("/") not in trusted:
-            return jsonify({"error": "Untrusted request origin"}), 403
+        if not app.config.get("CORS_ENABLED") or origin.rstrip("/") not in trusted:
+            return jsonify({"error": "Cross-origin requests are disabled or the origin is not trusted"}), 403
 
     @app.after_request
     def security_headers(response):
+        origin = request.headers.get("Origin", "").rstrip("/")
+        trusted = set(app.config.get("TRUSTED_ORIGINS") or ())
+        if app.config.get("CORS_ENABLED") and origin and origin in trusted:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-Key, X-Project-ID"
+            response.headers["Access-Control-Allow-Methods"] = "GET, HEAD, POST, PATCH, PUT, DELETE, OPTIONS"
+            response.headers.add("Vary", "Origin")
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
