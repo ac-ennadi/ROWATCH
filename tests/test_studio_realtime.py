@@ -96,3 +96,34 @@ def test_script_close_rejects_an_ended_session(app, registered_client, project):
     assert response.get_json()["error"] == "Active session not found"
     with app.app_context():
         assert ScriptEvent.query.filter_by(session_id=session_id).count() == 0
+
+
+def test_activity_is_paginated_and_search_treats_input_literally(app, registered_client, project):
+    with app.app_context():
+        owner = User.query.filter_by(username="Owner").one()
+        session = Session(project_id=project["id"], user_id=owner.id)
+        db.session.add(session)
+        db.session.flush()
+        db.session.add_all([
+            ScriptEvent(session_id=session.id, script_name=f"Workspace.Target{index}", event_type="open")
+            for index in range(205)
+        ])
+        db.session.commit()
+
+    first = registered_client.get(f"/dashboard/{project['id']}/activity?page=1").get_json()
+    second = registered_client.get(f"/dashboard/{project['id']}/activity?page=2").get_json()
+    assert first["page_size"] == 200
+    assert first["total"] == 205
+    assert len(first["items"]) == 200
+    assert len(second["items"]) == 5
+
+    match = registered_client.get(f"/dashboard/{project['id']}/activity", query_string={"q": "Target204"}).get_json()
+    assert match["total"] == 1
+    assert match["items"][0]["script"] == "Workspace.Target204"
+
+    injection = registered_client.get(
+        f"/dashboard/{project['id']}/activity",
+        query_string={"q": "%') OR 1=1 --"},
+    ).get_json()
+    assert injection["total"] == 0
+    assert registered_client.get(f"/dashboard/{project['id']}/activity?page=-1").status_code == 400

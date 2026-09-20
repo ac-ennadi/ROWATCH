@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/app.css" />
   <script defer src="/vendor/chart.umd.min.js"></script>
   <script defer src="/vendor/socket.io.min.js"></script>
+  <script defer src="/vendor/lucide.min.js"></script>
   <script defer src="/app.js"></script>
 </head>
 <body>
@@ -23,6 +24,7 @@
       <a href="#docs">Docs</a>
     </nav>
     <div class="nav-actions">
+      <button id="publicTheme" class="icon-btn public-theme-toggle" type="button" title="Switch theme" aria-label="Switch theme">◐</button>
       <button class="btn btn-ghost" type="button" data-route="login">Log in</button>
       <button class="btn btn-primary" type="button" data-route="register">Get started</button>
     </div>
@@ -47,7 +49,7 @@
             <div class="preview-nav">
               <div class="selected">Overview</div><div>Activity</div><div>Analytics</div><div>Members</div><div>Studio Integration</div><div>Settings</div>
             </div>
-            <div class="preview-nav lower"><div>← My Projects</div></div>
+            <div class="preview-nav lower"><div><i data-lucide="house" aria-hidden="true"></i> My Projects</div></div>
           </aside>
           <div class="preview-main">
             <div class="preview-top"><strong>Overview</strong><span>May 12 – May 18</span></div>
@@ -92,8 +94,8 @@
         <div class="section-heading centered"><h2>Pricing that scales with your team.</h2></div>
         <div class="pricing-table" id="landingPricing">
           <article class="price-card"><h3>Free</h3><div class="price"><strong>$0</strong></div><ul><li>1 project</li><li>5 members</li><li>7-day history</li><li>Basic analytics</li></ul><button class="btn btn-secondary full" data-route="register">Start free</button></article>
-          <article class="price-card"><h3>Pro</h3><div class="price"><strong>$5.99</strong><span>/ month</span></div><ul><li>3 projects</li><li>15 members</li><li>2-month history</li><li>1 co-admin</li><li>CSV export</li><li>Unlimited tasks &amp; documents</li></ul><button class="btn btn-primary full" data-plan="pro">Choose Pro</button></article>
-          <article class="price-card"><h3>Studio</h3><div class="price"><strong>$14.99</strong><span>/ month</span></div><ul><li>Unlimited projects</li><li>Unlimited members</li><li>Unlimited history</li><li>Unlimited co-admins</li><li>CSV export</li></ul><button class="btn btn-secondary full" data-plan="studio">Choose Studio</button></article>
+          <article class="price-card"><h3>Pro</h3><div class="price"><strong>$5.99</strong><span>/ month</span></div><ul><li>3 projects</li><li>15 members</li><li>2-month history</li><li>1 Project manager</li><li>CSV export</li><li>Unlimited tasks &amp; documents</li></ul><button class="btn btn-primary full" data-plan="pro">Choose Pro</button></article>
+          <article class="price-card"><h3>Studio</h3><div class="price"><strong>$14.99</strong><span>/ month</span></div><ul><li>Unlimited projects</li><li>Unlimited members</li><li>Unlimited history</li><li>Unlimited Project managers</li><li>CSV export</li></ul><button class="btn btn-secondary full" data-plan="studio">Choose Studio</button></article>
         </div>
       </section>
 
@@ -122,7 +124,7 @@
           <h2 id="studio-tracking">2. Information collected during Studio sessions</h2><p>Tracking begins only after you explicitly start a RoWatch session in the Studio plugin. During that active session, RoWatch may record session start/end times and duration, script names and open/close activity, aggregate character counts added or removed, and project objects such as parts or UI components added or removed.</p>
           <div class="legal-callout"><strong>RoWatch does not upload script source code, record keystrokes, or track Studio activity outside an active RoWatch session.</strong> Tracking stops when you end the session.</div>
           <h2>3. Why information is collected</h2><p>RoWatch uses this information to provide development history, team progress, assigned tasks, activity feeds, and project analytics; authenticate accounts and Studio connections; enforce plan limits; maintain security; and diagnose service problems.</p>
-          <h2>4. Project-scoped analytics</h2><p>Studio activity is attached to the project selected in the plugin and attributed to the account owning the API key. Project owners, co-admins, and members may see information according to their project role. Requests are checked against current project membership.</p>
+          <h2>4. Project-scoped analytics</h2><p>Studio activity is attached to the project selected in the plugin and attributed to the account owning the API key. Project owners, Project managers, and members may see information according to their project role. Requests are checked against current project membership.</p>
           <h2>5. Data retention</h2><p>Tracking-history retention follows the project owner’s plan: Free retains up to 7 days, Pro up to 60 days, and Studio may retain history without a fixed plan limit. Account, membership, task, document, billing-code, and security records may remain while needed to provide the service, satisfy operational obligations, or resolve abuse and disputes.</p>
           <h2>6. Data deletion</h2><p>Project owners can delete projects from Project Settings. To request deletion of an account or other personal information, contact RoWatch using the address below. Some limited records may be retained where reasonably necessary for security, fraud prevention, legal obligations, or dispute resolution.</p>
           <h2>7. Security</h2><p>RoWatch uses hashed passwords, hashed Studio API keys, authenticated project membership checks, restricted session boundaries, and role-based project access. No internet service can guarantee absolute security. Regenerate a Studio API key immediately if you believe it has been exposed.</p>
@@ -177,7 +179,7 @@
           <a class="brand" href="#" data-route="home"><span class="brand-mark">R</span><span>RoWatch</span></a>
           <div><h1>Create your account</h1><p>Your account API key will connect Roblox Studio securely.</p></div>
           <form id="registerForm">
-            <label>Username<input id="regUser" autocomplete="username" minlength="3" required /></label>
+            <label>Username<input id="regUser" autocomplete="username" minlength="3" maxlength="32" required /></label>
             <label>Email<input id="regEmail" type="email" autocomplete="email" required /></label>
             <label>Password<input id="regPw" type="password" autocomplete="new-password" minlength="8" required /></label>
             <label class="consent-option"><input id="regTrackingConsent" type="checkbox" required /><span>I consent to RoWatch session tracking and accept the <a href="/terms">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>.</span></label>
@@ -193,43 +195,67 @@
     <section id="view-projects" class="view app-page">
       <header class="app-topbar">
         <a class="brand" href="#" data-route="projects"><span class="brand-mark">R</span><span>RoWatch</span></a>
-        <div class="topbar-actions"><button id="projectsTheme" class="icon-btn" type="button" title="Switch theme">◐</button><button class="account-chip" type="button" data-route="account"><span id="projectsAvatar">Y</span><span id="projectsUsername">Account</span></button></div>
+        <div class="topbar-actions"><button id="projectsTheme" class="icon-btn" type="button" title="Switch theme" aria-label="Switch theme">◐</button><div class="user-menu-wrap"><button class="account-chip round-account-chip" type="button" data-user-menu aria-label="Open user menu" aria-expanded="false"><span id="projectsAvatar">Y</span><span id="projectsUsername">Account</span></button><div class="user-menu" hidden><button type="button" data-route="account">Account</button><button type="button" data-logout>Log out</button></div></div></div>
       </header>
       <div class="projects-shell container">
-        <div class="page-heading"><div><p class="eyebrow">WORKSPACES</p><h1>My Projects</h1><p>Select a project to open its dashboard.</p></div><button id="createProjectBtn" class="btn btn-primary" type="button">+ Create project</button></div>
-        <div id="projectsList" class="projects-grid"></div>
+        <div class="projects-home-grid">
+          <aside class="projects-home-sidebar"><button class="active" type="button" data-route="projects">Projects</button><button type="button" data-route="account">Account</button></aside>
+          <div><div class="page-heading"><div><h1>My Projects</h1><p>Select a project to open its dashboard.</p></div></div><div id="projectsList" class="projects-grid"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-account" class="view app-page account-page">
+      <header class="app-topbar">
+        <a class="brand" href="#" data-route="projects"><span class="brand-mark">R</span><span>RoWatch</span></a>
+        <button class="topbar-home" type="button" data-route="projects" aria-label="My Projects" title="My Projects"><i data-lucide="house" aria-hidden="true"></i></button>
+        <div class="topbar-actions"><button id="accountTheme" class="icon-btn" type="button" title="Switch theme" aria-label="Switch theme">◐</button><div class="user-menu-wrap"><button class="account-chip round-account-chip" type="button" data-user-menu aria-label="Open user menu" aria-expanded="false"><span id="accountAvatar">R</span><span id="accountUsername">Account</span></button><div class="user-menu" hidden><button type="button" data-route="account">Account</button><button type="button" data-logout>Log out</button></div></div></div>
+      </header>
+      <div class="account-page-shell container">
+        <div class="page-heading"><div><h1>Account</h1><p>Manage your profile, subscription, Studio connection, and appearance.</p></div></div>
+        <div class="account-settings-layout">
+          <nav class="account-settings-nav" aria-label="Account sections">
+            <button class="active" type="button" data-account-section="profile">Profile</button>
+            <button type="button" data-account-section="plan">Plan &amp; billing</button>
+            <button type="button" data-account-section="studio">Studio API key</button>
+            <button type="button" data-account-section="appearance">Appearance</button>
+          </nav>
+          <div id="accountPageContent" class="account-page-content"></div>
+        </div>
       </div>
     </section>
 
     <section id="view-dashboard" class="view dashboard-view">
       <button id="sidebarMobileButton" class="mobile-menu-btn" type="button" aria-label="Open sidebar">Menu</button>
       <aside id="sidebar" class="sidebar">
-        <div class="sidebar-head"><a class="brand inverse" href="#" data-route="projects"><span class="brand-mark">R</span><span>RoWatch</span></a><button id="sidebarClose" class="sidebar-close" type="button">×</button></div>
-        <div class="current-project"><span>CURRENT PROJECT</span><strong id="sidebarProjectName">Project</strong><small id="sidebarProjectPlan">Free plan</small></div>
-        <nav class="side-nav" aria-label="Project dashboard">
-          <p>PROJECT</p>
-          <button type="button" data-panel="overview" class="active">Overview</button>
-          <button type="button" data-panel="activity">Activity</button>
-          <button type="button" data-panel="tasks">Tasks</button>
-          <button type="button" data-panel="documents">Documentation</button>
-          <button type="button" data-panel="analytics" class="admin-only">Analytics</button>
-          <button type="button" data-panel="members" class="admin-only">Members</button>
-          <p>SETUP & MANAGEMENT</p>
-          <button type="button" data-panel="integration">Studio Integration</button>
-          <button type="button" data-panel="settings" class="admin-only">Project Settings</button>
-        </nav>
+        <div class="sidebar-head">
+          <a class="brand inverse" href="#" data-route="projects"><span class="brand-mark">R</span><span>RoWatch</span></a>
+          <div class="current-project"><strong id="sidebarProjectName">Project</strong><small id="sidebarProjectPlan">Free plan</small></div>
+          <nav class="side-nav" aria-label="Project dashboard">
+            <button type="button" data-route="projects" aria-label="My Projects" title="My Projects"><i class="nav-icon" data-lucide="house" aria-hidden="true"></i><span class="nav-label">My Projects</span></button>
+            <button type="button" data-panel="overview" class="active" aria-label="Overview" title="Overview"><i class="nav-icon" data-lucide="layout-dashboard" aria-hidden="true"></i><span class="nav-label">Overview</span></button>
+            <button type="button" data-panel="activity" aria-label="Activity" title="Activity"><i class="nav-icon" data-lucide="activity" aria-hidden="true"></i><span class="nav-label">Activity</span></button>
+            <button type="button" data-panel="tasks" aria-label="Tasks" title="Tasks"><i class="nav-icon" data-lucide="square-check-big" aria-hidden="true"></i><span class="nav-label">Tasks</span></button>
+            <button type="button" data-panel="documents" aria-label="Documentation" title="Documentation"><i class="nav-icon" data-lucide="book-open-text" aria-hidden="true"></i><span class="nav-label">Documentation</span></button>
+            <button type="button" data-panel="analytics" class="admin-only" aria-label="Analytics" title="Analytics"><i class="nav-icon" data-lucide="chart-no-axes-combined" aria-hidden="true"></i><span class="nav-label">Analytics</span></button>
+            <button type="button" data-panel="members" class="admin-only" aria-label="Members" title="Members"><i class="nav-icon" data-lucide="users" aria-hidden="true"></i><span class="nav-label">Members</span></button>
+            <button type="button" data-panel="integration" aria-label="Studio Integration" title="Studio Integration"><i class="nav-icon" data-lucide="plug" aria-hidden="true"></i><span class="nav-label">Studio Integration</span></button>
+            <button type="button" data-panel="settings" class="admin-only" aria-label="Project Settings" title="Project Settings"><i class="nav-icon" data-lucide="settings" aria-hidden="true"></i><span class="nav-label">Project Settings</span></button>
+          </nav>
+          <div class="horizontal-nav-actions"><button id="dashboardTheme" class="round-nav-button" type="button" title="Switch theme" aria-label="Switch theme">◐</button><div class="user-menu-wrap"><button class="top-account" type="button" data-user-menu aria-label="Open user menu" aria-expanded="false"><span id="dashboardAvatar">Y</span><span id="dashboardUsername">Account</span></button><div class="user-menu" hidden><button type="button" data-route="account">Account</button><button type="button" data-logout>Log out</button></div></div></div>
+          <button id="sidebarClose" class="sidebar-close" type="button">×</button>
+        </div>
         <div class="sidebar-lower">
-          <button type="button" data-route="projects" class="my-projects-btn">← My Projects</button>
           <div class="side-account">
             <button id="themeToggle" type="button"><span>Theme</span><strong id="themeLabel">Light</strong></button>
-            <button type="button" data-panel="account"><span>Account</span><strong id="sideUsername">User</strong></button>
+            <button type="button" data-route="account"><span>Account</span><strong id="sideUsername">User</strong></button>
             <button id="logoutButton" type="button" class="logout-btn">Log out</button>
           </div>
         </div>
       </aside>
       <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
       <div class="dashboard-main">
-        <header class="dashboard-topbar"><div><span id="topbarBreadcrumb">Project / Overview</span><h1 id="panelTitle">Overview</h1></div><div class="dashboard-top-actions"><span id="connectionBadge" class="status-box">Studio not checked</span><button class="account-chip" type="button" data-panel="account"><span id="dashboardAvatar">Y</span><span id="dashboardUsername">Account</span></button></div></header>
+        <header class="dashboard-topbar"><div><span id="topbarBreadcrumb">Project / Overview</span><h1 id="panelTitle">Overview</h1><p id="panelDescription">Project development summary.</p></div><div class="dashboard-top-actions"><button class="account-chip" type="button" data-route="account"><span>Account</span></button></div></header>
         <div id="panelContent" class="dashboard-content"></div>
       </div>
     </section>
@@ -246,10 +272,14 @@
     </form>
   </dialog>
 
+  <dialog id="taskEditorDialog" class="dialog task-editor-dialog"><div id="taskDialogContent"></div></dialog>
+  <dialog id="documentTitleDialog" class="dialog"><form id="documentTitleForm"><div class="dialog-head"><div><h2>New document</h2><p>Name the document before opening its editor.</p></div><button class="dialog-x" type="button" data-dialog-close aria-label="Close">×</button></div><label>Document title<input id="newDocumentTitle" maxlength="32" required /></label><p id="documentTitleError" class="form-error"></p><div class="dialog-actions"><button class="btn btn-secondary" type="button" data-dialog-close>Cancel</button><button class="btn btn-primary" type="submit">Create document</button></div></form></dialog>
+  <dialog id="actionConfirmDialog" class="dialog" aria-labelledby="actionConfirmTitle"><form id="actionConfirmForm"><div class="dialog-head"><div><h2 id="actionConfirmTitle">Confirm action</h2><p id="actionConfirmMessage"></p></div></div><label id="actionConfirmPhraseWrap" hidden>Confirmation<input id="actionConfirmPhrase" autocomplete="off" /></label><p id="actionConfirmError" class="form-error"></p><div class="dialog-actions"><button id="actionConfirmCancel" class="btn btn-secondary" type="button">Cancel</button><button id="actionConfirmSubmit" class="btn btn-danger" type="submit">Confirm</button></div></form></dialog>
+
   <dialog id="createProjectDialog" class="dialog">
     <form method="dialog" id="createProjectForm">
       <div class="dialog-head"><div><h2>Create project</h2><p>Projects group your Roblox Studio activity and team.</p></div><button value="cancel" class="dialog-x" aria-label="Close">×</button></div>
-      <label>Project name<input id="newProjectName" maxlength="128" placeholder="Vehicle Legends" required /></label>
+      <label>Project name<input id="newProjectName" maxlength="32" placeholder="Vehicle Legends" required /></label>
       <p id="createProjectError" class="form-error"></p>
       <div class="dialog-actions"><button value="cancel" class="btn btn-secondary" type="button" data-dialog-close>Cancel</button><button class="btn btn-primary" type="submit">Create project</button></div>
     </form>
@@ -258,7 +288,7 @@
   <dialog id="inviteDialog" class="dialog">
     <form method="dialog" id="inviteForm">
       <div class="dialog-head"><div><h2>Invite member</h2><p>Add an existing RoWatch user to this project.</p></div><button value="cancel" class="dialog-x" aria-label="Close">×</button></div>
-      <label>RoWatch username<input id="inviteUsername" required /></label>
+      <label>RoWatch username<input id="inviteUsername" maxlength="32" required /></label>
       <p id="inviteError" class="form-error"></p>
       <div class="dialog-actions"><button class="btn btn-secondary" type="button" data-dialog-close>Cancel</button><button class="btn btn-primary" type="submit">Invite member</button></div>
     </form>

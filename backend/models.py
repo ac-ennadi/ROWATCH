@@ -14,7 +14,7 @@ def gen_key():
 class User(db.Model):
     __tablename__ = "users"
     id            = db.Column(db.String(36), primary_key=True, default=gen_uuid)
-    username      = db.Column(db.String(64), unique=True, nullable=False)
+    username      = db.Column(db.String(32), unique=True, nullable=False)
     email         = db.Column(db.String(128), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     is_admin      = db.Column(db.Boolean, default=False)
@@ -45,7 +45,7 @@ class Project(db.Model):
     __tablename__ = "projects"
     id                 = db.Column(db.String(36), primary_key=True, default=gen_uuid)
     owner_id           = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
-    name               = db.Column(db.String(128), nullable=False)
+    name               = db.Column(db.String(32), nullable=False)
     project_key        = db.Column(db.String(64), unique=True, default=gen_key)
     plan               = db.Column(db.String(16), default="free")   # free / pro / studio
     plan_expires_at    = db.Column(db.DateTime, nullable=True)
@@ -142,7 +142,7 @@ class Task(db.Model):
     id             = db.Column(db.String(36), primary_key=True, default=gen_uuid)
     project_id     = db.Column(db.String(36), db.ForeignKey("projects.id"), nullable=False)
     created_by_id  = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
-    title          = db.Column(db.String(200), nullable=False)
+    title          = db.Column(db.String(32), nullable=False)
     description_md = db.Column(db.Text, default="")
     due_at         = db.Column(db.DateTime, nullable=True)
     created_at     = db.Column(db.DateTime, default=datetime.utcnow)
@@ -169,13 +169,15 @@ class ProjectDocument(db.Model):
     id            = db.Column(db.String(36), primary_key=True, default=gen_uuid)
     project_id    = db.Column(db.String(36), db.ForeignKey("projects.id"), nullable=False)
     created_by_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
-    title         = db.Column(db.String(200), nullable=False)
+    updated_by_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=True)
+    title         = db.Column(db.String(32), nullable=False)
     content_md    = db.Column(db.Text, default="")
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     project = db.relationship("Project", back_populates="documents")
     created_by = db.relationship("User", foreign_keys=[created_by_id])
+    updated_by = db.relationship("User", foreign_keys=[updated_by_id])
 
 
 class AccountApiKey(db.Model):

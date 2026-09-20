@@ -1,5 +1,6 @@
 from conftest import issue_api_key, register
 from config import PLAN_LIMITS
+from models import db, ProjectMember, User
 
 
 def setup_team(app):
@@ -52,9 +53,25 @@ def test_members_read_docs_but_only_admins_write(app):
     assert created.status_code == 201
     documents = member.get(f"/workspace/{project['id']}/documents")
     assert documents.status_code == 200
-    assert documents.get_json()["items"][0]["title"] == "Guide"
+    document = documents.get_json()["items"][0]
+    assert document["title"] == "Guide"
+    assert document["created_by"] == "TeamOwner"
+    assert document["updated_by"] == "TeamOwner"
     assert member.post(f"/workspace/{project['id']}/documents", json={"title": "Forbidden"}).status_code == 403
     assert outsider.get(f"/workspace/{project['id']}/documents").status_code == 403
+
+    with app.app_context():
+        team_member = User.query.filter_by(username="TeamMember").one()
+        membership = ProjectMember.query.filter_by(project_id=project["id"], user_id=team_member.id).one()
+        membership.role = "co_admin"
+        db.session.commit()
+    modified = member.patch(
+        f"/workspace/{project['id']}/documents/{document['id']}",
+        json={"content_md": "# Updated guide"},
+    )
+    assert modified.status_code == 200
+    assert modified.get_json()["created_by"] == "TeamOwner"
+    assert modified.get_json()["updated_by"] == "TeamMember"
 
 
 def test_free_limits_and_pro_unlimited(app, monkeypatch, issue_code):
@@ -72,3 +89,33 @@ def test_free_limits_and_pro_unlimited(app, monkeypatch, issue_code):
     assert owner.post("/payments/codes/redeem", json={"code": issue_code("pro")}).status_code == 200
     assert owner.post(f"{base}/tasks", json={"title": "Two"}).status_code == 201
     assert owner.post(f"{base}/documents", json={"title": "Two"}).status_code == 201
+
+
+def test_workspace_names_and_free_document_words_are_limited(registered_client, project, issue_code):
+    base = f"/workspace/{project['id']}"
+    too_long = "x" * 33
+    assert registered_client.post(f"{base}/tasks", json={"title": too_long}).status_code == 400
+    task = registered_client.post(f"{base}/tasks", json={"title": "Valid task"}).get_json()
+    assert registered_client.patch(f"{base}/tasks/{task['id']}", json={"title": too_long}).status_code == 400
+    assert registered_client.post(f"{base}/documents", json={"title": too_long}).status_code == 400
+    document = registered_client.post(f"{base}/documents", json={"title": "Valid guide", "content_md": "short"}).get_json()
+    assert registered_client.patch(f"{base}/documents/{document['id']}", json={"title": too_long}).status_code == 400
+
+    oversized_content = "word " * 1029
+    assert registered_client.patch(
+        f"{base}/documents/{document['id']}", json={"content_md": oversized_content}
+    ).status_code == 400
+    rejected = registered_client.post(f"{base}/documents", json={
+        "title": "Free guide",
+        "content_md": oversized_content,
+    })
+    assert rejected.status_code == 400
+    assert rejected.get_json()["word_limit"] == 1028
+    assert rejected.get_json()["word_count"] == 1029
+
+    assert registered_client.post("/payments/codes/redeem", json={"code": issue_code("pro")}).status_code == 200
+    accepted = registered_client.post(f"{base}/documents", json={
+        "title": "Pro guide",
+        "content_md": oversized_content,
+    })
+    assert accepted.status_code == 201

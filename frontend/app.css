@@ -94,3 +94,260 @@ input[readonly]{opacity:.78;cursor:not-allowed}
 .consent-summary span{font-size:11px;color:var(--muted);line-height:1.5}
 .consent-version{font-size:10px;color:var(--muted);margin:2px 0 10px 27px}
 .consent-gate-actions{justify-content:space-between}
+
+
+/* Refined Trello-inspired application UI */
+:root{--bg:#f4f5f7;--bg-soft:#f4f5f7;--panel:#fff;--panel-2:#f1f2f4;--text:#172b4d;--muted:#626f86;--border:#dcdfe4;--border-strong:#c7ccd4;--accent:#0c66e4;--accent-strong:#0b5bd3;--accent-soft:#e9f2ff;--good:#1f845a;--bad:#c9372c;--sidebar:#172b4d;--sidebar-border:rgba(255,255,255,.1);--sidebar-text:#fff;--sidebar-muted:#b6c2cf;--radius:8px;--radius-lg:11px;--shadow:0 1px 2px rgba(9,30,66,.13),0 0 1px rgba(9,30,66,.1)}
+html[data-theme="dark"]{--bg:#161a1d;--bg-soft:#161a1d;--panel:#22272b;--panel-2:#2c333a;--text:#dcdfe4;--muted:#9fadbc;--border:#3d444d;--border-strong:#505862;--accent:#579dff;--accent-strong:#85b8ff;--accent-soft:#1c3b63;--good:#7ee2b8;--bad:#f87168;--sidebar:#101214;--sidebar-border:#2f363d;--sidebar-muted:#9fadbc;--shadow:0 1px 2px rgba(0,0,0,.26)}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+.app-topbar{height:48px;background:var(--sidebar);border-bottom-color:var(--sidebar-border);color:#fff}
+.app-topbar .brand{color:#fff;font-size:15px}.app-topbar .brand-mark{width:26px;height:26px;border-radius:7px;font-size:14px;transform:none}
+.app-topbar .icon-btn,.app-topbar .account-chip{height:32px;border:0;background:transparent;color:#fff;border-radius:7px}
+.app-topbar .icon-btn:hover,.app-topbar .account-chip:hover{background:rgba(255,255,255,.12);box-shadow:none}
+.app-topbar .account-chip>span:first-child{width:26px;height:26px;border-radius:50%;background:#ffab00;color:#172b4d}
+.projects-shell{padding-top:32px}.page-heading{align-items:center;margin-bottom:20px}.page-heading .eyebrow{display:none}
+.page-heading h1{font-size:24px;letter-spacing:-.02em;margin-bottom:4px}.page-heading p:not(.eyebrow){font-size:13px}
+.btn{min-height:34px;padding:7px 13px;border-radius:8px;font-weight:600}.btn-lg{min-height:42px}.projects-grid{gap:12px}
+.project-card{min-height:138px;border:0;border-radius:11px;padding:15px;box-shadow:var(--shadow);transition:transform .12s ease,box-shadow .12s ease}
+.project-card::before{content:"";display:block;width:64px;height:8px;border-radius:99px;background:var(--accent);margin-bottom:14px}
+.project-card:hover{border-color:transparent;transform:translateY(-1px);box-shadow:0 3px 7px rgba(9,30,66,.18)}
+.project-card h2{font-size:16px;font-weight:650}.project-card>.muted{font-size:12px;margin:5px 0 18px}.project-card-meta{gap:14px;font-size:11px}
+.dashboard-view{background:var(--bg)}.sidebar{width:220px}.sidebar-head{height:48px;padding:0 12px}
+.sidebar-head .brand{font-size:15px}.sidebar-head .brand-mark{width:26px;height:26px;border-radius:7px;font-size:14px;transform:none}
+.current-project{padding:14px 12px}.current-project span,.side-nav p{font-size:9px}.current-project strong{font-size:14px}
+.side-nav{padding:8px 7px}.side-nav button,.my-projects-btn,.side-account button{border-radius:7px;padding:8px 10px;font-size:12px}
+.side-nav button:hover,.my-projects-btn:hover,.side-account button:hover{background:rgba(255,255,255,.1)}.side-nav button.active{background:rgba(255,255,255,.14);color:#fff}
+.dashboard-main{margin-left:220px}.dashboard-topbar{height:64px;padding:0 22px}.dashboard-topbar h1{font-size:21px;font-weight:650}
+.dashboard-content{max-width:1180px;padding:22px 20px 54px}.status-box,.account-chip{border-radius:8px}
+.kpi-grid{gap:10px;margin-bottom:16px}.kpi{border:0;border-radius:10px;padding:14px 15px;box-shadow:var(--shadow)}
+.kpi span{text-transform:none;letter-spacing:0;font-size:11px}.kpi strong{font-size:23px;font-weight:650}
+.panel-card,.settings-row,.account-plans{border:0;border-radius:11px;box-shadow:var(--shadow)}
+.panel-card-head{min-height:46px;padding:11px 14px}.panel-card-head h2{font-size:14px;font-weight:650}.panel-card-head p{font-size:11px}
+.table th{background:var(--panel-2);font-size:11px}.table td{padding:11px 13px}.toolbar h2{font-size:22px}
+input,select,textarea{border-radius:8px}.task-card,.document-link,.account-plan-card,.redeem-code-box,.admin-code-generator{border-radius:9px}
+.dialog{border-radius:12px;overflow:hidden}.toast{border-radius:8px}
+.projects-skeleton{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;grid-column:1/-1}
+.panel-skeleton{display:grid;gap:16px}.skeleton-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.skeleton-panels{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(280px,.8fr);gap:16px}
+.skeleton{position:relative;overflow:hidden;border:0;border-radius:11px;background:var(--panel);box-shadow:var(--shadow);animation:none}
+.skeleton::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--panel-2) 78%,transparent),transparent);animation:skeletonSweep 1.25s infinite}
+.skeleton-project-card{height:138px;padding:15px}.skeleton-project-card i,.skeleton-project-card b,.skeleton-project-card span,.skeleton-project-card small,.skeleton-kpi i,.skeleton-kpi b,.skeleton-kpi span{display:block;background:var(--panel-2);border-radius:6px}
+.skeleton-project-card i{width:64px;height:8px;margin-bottom:16px}.skeleton-project-card b{width:46%;height:17px;margin-bottom:9px}.skeleton-project-card span{width:82%;height:10px}
+.skeleton-project-card small{position:absolute;left:15px;bottom:15px;width:58%;height:9px}
+.skeleton-kpi{height:104px;padding:15px}.skeleton-kpi i{width:43%;height:9px;margin-bottom:12px}.skeleton-kpi b{width:58%;height:25px;margin-bottom:8px}.skeleton-kpi span{width:67%;height:8px}.skeleton-panel{height:300px}
+@keyframes skeletonSweep{to{transform:translateX(100%)}}
+@media(max-width:1040px){.projects-skeleton{grid-template-columns:repeat(2,1fr)}.skeleton-kpis{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:760px){.dashboard-main{margin-left:0}.projects-skeleton{grid-template-columns:1fr}.skeleton-panels{grid-template-columns:1fr}.dashboard-topbar{height:58px;padding-inline:14px}.dashboard-content{padding:18px 14px 55px}}
+@media(max-width:460px){.skeleton-kpis{grid-template-columns:1fr}}
+
+
+/* Horizontal application shell and standalone account */
+.public-theme-toggle{flex:0 0 auto;background:var(--panel);color:var(--text)}
+.authenticated-nav{display:flex;align-items:center;gap:3px}
+.authenticated-nav button,.nav-account-button{height:32px;border:0;border-radius:7px;padding:0 10px;background:transparent;color:rgba(255,255,255,.9);font-weight:550;cursor:pointer}
+.authenticated-nav button:hover,.authenticated-nav button.active,.nav-account-button:hover{background:rgba(255,255,255,.12);color:#fff}
+.top-avatar{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:#ffab00;color:#172b4d;font-size:10px;font-weight:750}
+.dashboard-view{min-height:100vh}
+.dashboard-view .sidebar{position:sticky;inset:0 0 auto;width:100%;height:auto;background:var(--panel);color:var(--text);border:0;display:block;z-index:40;box-shadow:0 1px 0 var(--border)}
+.dashboard-view .sidebar-head{height:48px;background:var(--sidebar);border:0;padding:0 max(20px,calc((100vw - 1180px)/2));display:flex;gap:18px}
+.dashboard-view .sidebar-head .authenticated-nav{margin-right:auto}
+.horizontal-nav-actions{margin-left:auto;display:flex;align-items:center;gap:5px}
+.round-nav-button{width:32px;height:32px;border:0;border-radius:50%;background:transparent;color:#fff}
+.round-nav-button:hover{background:rgba(255,255,255,.12)}
+.top-account{height:32px;border:0;border-radius:7px;background:transparent;color:#fff;display:flex;align-items:center;gap:8px;padding:2px 8px 2px 3px}
+.top-account:hover{background:rgba(255,255,255,.12)}
+.top-account>span:first-child{width:27px;height:27px;border-radius:50%;display:grid;place-items:center;background:#ffab00;color:#172b4d;font-size:10px;font-weight:750}
+.top-account>span:last-child{font-size:12px;font-weight:600}
+.dashboard-view .current-project{max-width:1180px;margin:0 auto;padding:10px 20px 5px;border:0;background:var(--panel)}
+.dashboard-view .current-project span{display:none}.dashboard-view .current-project strong{margin:0;font-size:17px;color:var(--text)}
+.dashboard-view .current-project small{display:inline-block;margin-left:8px;padding:3px 7px;border-radius:999px;background:var(--panel-2);color:var(--muted);font-size:10px}
+.dashboard-view .side-nav{max-width:1180px;margin:0 auto;padding:0 20px;display:flex;gap:2px;overflow-x:auto;background:var(--panel)}
+.dashboard-view .side-nav p{display:none}
+.dashboard-view .side-nav button{width:auto;flex:0 0 auto;border-radius:0;padding:9px 10px 10px;background:transparent;color:var(--muted);border-bottom:2px solid transparent;font-size:12px}
+.dashboard-view .side-nav button:hover{background:var(--panel-2);color:var(--text)}
+.dashboard-view .side-nav button.active{background:transparent;color:var(--accent);border-bottom-color:var(--accent);font-weight:650}
+.dashboard-view .sidebar-lower{display:none}
+.dashboard-view .dashboard-main{margin-left:0}
+.dashboard-view .dashboard-topbar{position:sticky;top:0;height:66px;padding:0 max(20px,calc((100vw - 1180px)/2));z-index:25}
+.dashboard-view .dashboard-content{margin:0 auto;width:100%}
+.dashboard-view .mobile-menu-btn,.dashboard-view .sidebar-backdrop{display:none!important}
+.dashboard-view .dashboard-top-actions .account-chip{display:none}
+.account-page{min-height:100vh;background:var(--bg)}
+.account-page .app-topbar{padding:0 max(20px,calc((100vw - 1180px)/2));gap:18px}
+.account-page .authenticated-nav{margin-right:auto}
+.account-page-shell{padding-top:28px;padding-bottom:70px}
+.account-settings-layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:28px;align-items:start}
+.account-settings-nav{position:sticky;top:68px;display:grid;gap:3px}
+.account-settings-nav a{padding:9px 10px;border-radius:8px;color:var(--text);font-weight:550}
+.account-settings-nav a:hover{background:var(--panel-2)}
+.account-settings-nav a:first-child{background:var(--panel-2);font-weight:650}
+.account-page-content{min-width:0;display:grid;gap:22px}
+.account-page-section{scroll-margin-top:70px}
+.account-page-section+.account-page-section{padding-top:22px;border-top:1px solid var(--border)}
+.account-page-content .panel-card,.account-page-content .account-plans{max-width:760px;margin:0 0 14px;padding:18px}
+.account-page-content .panel-card-head,.account-page-content .account-plans>.panel-card-head{padding:0 0 16px;border-bottom:1px solid var(--border);margin-bottom:16px}
+.account-page-content .account-grid{max-width:620px}
+.account-page-content .account-plan-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.appearance-section{max-width:760px;display:flex;align-items:center;justify-content:space-between;gap:20px;background:var(--panel);border-radius:11px;padding:18px;box-shadow:var(--shadow)}
+.appearance-section h2{margin:0 0 4px;font-size:15px}.appearance-section p{margin:0;color:var(--muted);font-size:12px}
+html[data-theme="dark"] .public-nav{background:color-mix(in srgb,var(--bg) 96%,transparent)}
+html[data-theme="dark"] .product-preview,html[data-theme="dark"] .preview-stats>div,html[data-theme="dark"] .preview-chart-card,html[data-theme="dark"] .preview-members,html[data-theme="dark"] .preview-activity{background:var(--panel)}
+html[data-theme="dark"] .section-muted{background:var(--bg-soft)}
+@media(max-width:760px){
+ .dashboard-view .sidebar{transform:none;transition:none}
+ .dashboard-view .sidebar-head{padding:0 12px}.dashboard-view .sidebar-head .authenticated-nav{display:none}
+ .top-account>span:last-child{display:none}.dashboard-view .current-project{padding-inline:14px}
+ .dashboard-view .side-nav{padding-inline:8px}.dashboard-view .dashboard-topbar{padding-inline:14px}
+ .account-page .authenticated-nav{display:none}.account-settings-layout{grid-template-columns:1fr}
+ .account-settings-nav{position:static;display:flex;overflow-x:auto}.account-settings-nav a{white-space:nowrap}
+ .account-page-content .account-plan-grid{grid-template-columns:1fr}.appearance-section{align-items:flex-start;flex-direction:column}
+}
+
+
+/* Exact reference layout alignment */
+.projects-home-grid{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px}
+.projects-home-sidebar{display:flex;flex-direction:column;gap:4px}
+.projects-home-sidebar button{border:0;background:transparent;color:var(--text);border-radius:8px;text-align:left;padding:9px 10px;font-weight:550}
+.projects-home-sidebar button:hover,.projects-home-sidebar button.active{background:var(--panel-2);color:var(--text)}
+.projects-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.create-project-card{border:0;border-radius:11px;background:var(--panel-2);color:var(--muted);min-height:138px;padding:14px;text-align:center}
+.create-project-card:hover{background:color-mix(in srgb,var(--panel-2) 75%,var(--border));color:var(--text)}
+.create-project-card>span{width:32px;height:32px;border-radius:50%;background:var(--panel);display:grid;place-items:center;margin:18px auto 8px;box-shadow:var(--shadow);font-size:18px}
+.round-account-chip>span:last-child{display:none}.round-account-chip{width:32px;padding:2px;border-radius:50%}
+.dashboard-view .dashboard-topbar{position:static;height:auto;min-height:88px;padding-top:20px;padding-bottom:15px;background:var(--bg);border:0}
+.dashboard-view .dashboard-topbar>div:first-child>span{display:none}
+.dashboard-view .dashboard-topbar h1{font-size:23px;line-height:1.2;margin:0;font-weight:650;letter-spacing:-.015em}
+.dashboard-view .dashboard-topbar p{margin:4px 0 0;color:var(--muted);font-size:13px}
+.dashboard-view .dashboard-content{padding-top:0}
+.dashboard-view .dashboard-top-actions{align-self:flex-start;margin-top:2px}
+.dashboard-view .status-box{background:var(--panel)}
+.data-table-wrap{border-radius:11px;overflow:hidden}
+.task-list{gap:10px}.task-card{background:var(--panel);box-shadow:var(--shadow);border:0}
+.documents-list{background:var(--panel-2);padding:9px;border-radius:12px}
+.document-link{border:0;background:transparent}.document-link.active{background:var(--panel);box-shadow:var(--shadow)}
+.settings-row{padding:18px}
+@media(max-width:1040px){.projects-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.projects-home-grid{grid-template-columns:1fr}.projects-home-sidebar{display:none}.projects-grid{grid-template-columns:1fr}.dashboard-view .dashboard-topbar{padding-top:18px}.dashboard-view .dashboard-top-actions{display:none}}
+
+
+/* Focused account panes, profile menus, and dialog composers */
+.user-menu-wrap{position:relative}
+.user-menu{position:absolute;right:0;top:38px;width:150px;padding:6px;background:var(--panel);border:1px solid var(--border);border-radius:9px;box-shadow:0 8px 24px rgba(9,30,66,.18);z-index:80}
+.user-menu[hidden]{display:none}
+.user-menu button{display:block;width:100%;border:0;border-radius:7px;background:transparent;color:var(--text);padding:8px 10px;text-align:left;font-weight:550}
+.user-menu button:hover{background:var(--panel-2)}
+.user-menu button:last-child{color:var(--bad)}
+.account-settings-nav button{border:0;background:transparent;color:var(--text);border-radius:8px;text-align:left;padding:9px 10px;font-weight:550}
+.account-settings-nav button:hover,.account-settings-nav button.active{background:var(--panel-2);color:var(--text)}
+.account-page-section[hidden]{display:none}
+.dashboard-view .current-project{display:flex;align-items:center;gap:10px}
+.dashboard-view .current-project button{border:0;background:transparent;color:var(--muted);border-radius:8px;padding:7px 8px}
+.dashboard-view .current-project button:hover{background:var(--panel-2);color:var(--text)}
+.dashboard-view .current-project small:empty{display:none}
+.task-toolbar,.documents-toolbar{justify-content:flex-end}
+.task-toolbar>div:first-child,.documents-toolbar>div:first-child{display:none}
+.task-editor-dialog{width:min(760px,calc(100% - 28px));max-height:90vh;overflow:auto}
+.task-editor-dialog #taskDialogContent{padding:18px}
+.task-editor-dialog .task-editor{box-shadow:none;margin:0}
+#documentTitleDialog form,#actionConfirmDialog form{padding:22px}
+#actionConfirmMessage{max-width:390px}
+#actionConfirmPhraseWrap[hidden]{display:none}
+@media(max-width:760px){.account-settings-nav button{white-space:nowrap}.user-menu{position:fixed;right:12px;top:44px}.task-toolbar,.documents-toolbar{align-items:stretch}}
+
+
+/* Inline topbar account controls */
+.topbar-back{min-height:32px;margin-left:14px;padding:0 10px;border:1px solid rgba(255,255,255,.18);border-radius:6px;background:transparent;color:rgba(255,255,255,.82);font:inherit;font-size:13px;cursor:pointer}
+.topbar-back:hover{background:rgba(255,255,255,.09);color:#fff}
+.app-topbar .topbar-actions{margin-left:auto}
+.user-menu-wrap{position:static;display:flex;align-items:center;gap:4px}
+.user-menu{position:static;display:flex;align-items:center;gap:3px;width:auto;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+.user-menu[hidden]{display:none}
+.user-menu button{display:inline-flex;align-items:center;width:auto;min-height:32px;padding:0 10px;border-radius:6px;color:rgba(255,255,255,.84)}
+.user-menu button:hover{background:rgba(255,255,255,.09);color:#fff}
+.user-menu button:last-child{color:#ffb4ad}
+.top-account{width:32px;min-width:32px;padding:2px}
+.top-account>span:last-child{display:none}
+@media(max-width:760px){.user-menu{position:static}.topbar-back{margin-left:8px;padding-inline:8px}}
+
+.account-chip.round-account-chip{width:auto;min-width:32px;padding:2px 9px 2px 3px;border-radius:7px;gap:8px}
+.round-account-chip>span:last-child{display:inline;font-size:12px;font-weight:600}
+.account-page-content [data-save-account]{margin-top:18px}
+.account-page-content .account-grid{gap:18px;margin-bottom:0}
+.activity-query{display:flex;align-items:end;gap:10px;flex-wrap:wrap}
+.activity-query label{min-width:190px}
+.activity-query input,.activity-query select{margin-top:4px}
+.activity-pager{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:14px;color:var(--muted);font-size:12px}
+@media(max-width:760px){.account-chip.round-account-chip{width:auto}.round-account-chip>span:last-child{display:inline}.activity-pager{justify-content:space-between}.activity-query{width:100%}.activity-query label{width:100%}}
+
+
+/* Unified project top navigation */
+.dashboard-view .sidebar-head{height:52px;max-width:none;padding:0 14px;gap:8px;overflow:visible}
+.dashboard-view .sidebar-head>.brand,.dashboard-view .sidebar-head>.topbar-back,.dashboard-view .sidebar-head>.current-project,.dashboard-view .sidebar-head>.horizontal-nav-actions{flex:0 0 auto}
+.dashboard-view .sidebar-head>.topbar-back{margin-left:2px}
+.dashboard-view .sidebar-head>.current-project{display:flex;align-items:center;max-width:150px;margin:0;padding:0 8px;border:0;background:transparent;overflow:hidden}
+.dashboard-view .sidebar-head>.current-project strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;font-size:13px;font-weight:650}
+.dashboard-view .sidebar-head>.current-project small{display:none}
+.dashboard-view .sidebar-head>.side-nav{display:flex;align-self:stretch;flex:1 1 auto;min-width:100px;max-width:none;margin:0;padding:0;gap:1px;overflow-x:auto;overflow-y:hidden;background:transparent;scrollbar-width:thin}
+.dashboard-view .sidebar-head>.side-nav button{display:flex;align-items:center;align-self:stretch;width:auto;flex:0 0 auto;padding:0 7px;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:rgba(255,255,255,.7);font-size:11px;white-space:nowrap}
+.dashboard-view .sidebar-head>.side-nav button:hover{background:rgba(255,255,255,.08);color:#fff}
+.dashboard-view .sidebar-head>.side-nav button.active{background:transparent;color:#fff;border-bottom-color:#579dff;font-weight:650}
+.dashboard-view .sidebar-head>.horizontal-nav-actions{margin-left:2px}
+@media(max-width:900px){.dashboard-view .sidebar-head>.brand span:last-child{display:none}.dashboard-view .sidebar-head>.topbar-back{font-size:0;padding-inline:9px}.dashboard-view .sidebar-head>.topbar-back::after{content:'←';font-size:14px}.dashboard-view .sidebar-head>.current-project{max-width:110px}}
+
+
+/* Animated icon-first project navigation */
+.dashboard-view .sidebar-head>.side-nav button{gap:0;padding-inline:9px;transition:background-color .16s ease,color .16s ease,padding .2s ease}
+.dashboard-view .sidebar-head>.side-nav .nav-icon{display:grid;place-items:center;min-width:18px;height:20px;font-size:16px;line-height:1;transition:transform .2s ease}
+.dashboard-view .sidebar-head>.side-nav .nav-label{display:block;max-width:0;margin-left:0;overflow:hidden;opacity:0;transform:translateX(-5px);transition:max-width .24s ease,margin-left .2s ease,opacity .16s ease,transform .2s ease}
+.dashboard-view .sidebar-head>.side-nav button:hover,.dashboard-view .sidebar-head>.side-nav button:focus-visible{padding-inline:10px}
+.dashboard-view .sidebar-head>.side-nav button:hover .nav-icon,.dashboard-view .sidebar-head>.side-nav button:focus-visible .nav-icon{transform:scale(1.08)}
+.dashboard-view .sidebar-head>.side-nav button:hover .nav-label,.dashboard-view .sidebar-head>.side-nav button:focus-visible .nav-label{max-width:130px;margin-left:6px;opacity:1;transform:translateX(0)}
+@media(prefers-reduced-motion:reduce){.dashboard-view .sidebar-head>.side-nav button,.dashboard-view .sidebar-head>.side-nav .nav-icon,.dashboard-view .sidebar-head>.side-nav .nav-label{transition:none}}
+
+
+/* Avatar dropdown menu */
+.user-menu-wrap{position:relative;display:flex;align-items:center}
+.user-menu{position:absolute;top:calc(100% + 8px);right:0;z-index:200;display:flex;flex-direction:column;align-items:stretch;gap:2px;width:170px;padding:6px;border:1px solid var(--border);border-radius:9px;background:var(--panel);box-shadow:0 10px 30px rgba(9,30,66,.22);transform-origin:top right;animation:userMenuEnter .16s ease-out}
+.user-menu[hidden]{display:none}
+.user-menu button{display:flex;align-items:center;width:100%;min-height:34px;padding:7px 10px;border:0;border-radius:6px;background:transparent;color:var(--text);text-align:left;font-weight:550}
+.user-menu button:hover,.user-menu button:focus-visible{background:var(--panel-2);color:var(--text)}
+.user-menu button:last-child{color:var(--bad)}
+@keyframes userMenuEnter{from{opacity:0;transform:translateY(-5px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:760px){.user-menu{position:absolute;top:calc(100% + 8px);right:0}}
+@media(prefers-reduced-motion:reduce){.user-menu{animation:none}}
+
+.dashboard-view .sidebar-head>.side-nav svg.nav-icon{width:17px;height:17px;min-width:17px;stroke-width:2;fill:none}
+
+
+/* Keep edge controls fixed while the project navigation remains truly centered */
+.dashboard-view .sidebar-head{position:relative}
+.dashboard-view .sidebar-head>.side-nav{position:absolute;top:0;left:50%;width:max-content;height:100%;min-width:0;max-width:none;overflow:visible;transform:translateX(-50%)}
+.dashboard-view .sidebar-head>.horizontal-nav-actions{margin-left:auto}
+@media(max-width:760px){
+ .dashboard-view .sidebar-head>.side-nav .nav-label{display:none}
+ .dashboard-view .sidebar-head>.side-nav button:hover .nav-label,.dashboard-view .sidebar-head>.side-nav button:focus-visible .nav-label{display:none;max-width:0;margin-left:0;opacity:0}
+}
+
+
+/* Shared centered navbar frame across authenticated views */
+.app-topbar,.account-page .app-topbar,.dashboard-view .sidebar-head{height:48px;padding-left:max(24px,calc((100vw - 1180px)/2));padding-right:max(24px,calc((100vw - 1180px)/2))}
+.topbar-home{display:grid;place-items:center;width:32px;height:32px;margin-left:8px;padding:0;border:1px solid rgba(255,255,255,.18);border-radius:6px;background:transparent;color:rgba(255,255,255,.82);cursor:pointer}
+.topbar-home:hover{background:rgba(255,255,255,.09);color:#fff}
+.topbar-home svg{width:17px;height:17px;stroke-width:2}
+@media(max-width:760px){.app-topbar,.account-page .app-topbar,.dashboard-view .sidebar-head{padding-left:14px;padding-right:14px}}
+
+.content-counter{margin:-6px 0 12px;color:var(--muted);font-size:11px;text-align:right}
+.content-counter.over-limit{color:var(--bad);font-weight:650}
+
+.assignee-help{display:grid;gap:2px;margin:14px 0 8px}
+.assignee-help strong{font-size:12px}
+.assignee-help span{color:var(--muted);font-size:11px}
+.document-meta-footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 20px;margin-top:24px;padding-top:12px;border-top:1px solid var(--border);color:var(--muted);font-size:11px}
+.document-meta-footer strong{color:var(--text);font-weight:650}
+
+.task-editor-dialog #taskDialogContent{padding:0}
+.task-editor-dialog .task-editor{padding:22px}
+.task-editor-head{align-items:flex-start;margin:-2px 0 20px;padding:0 0 16px;border-bottom:1px solid var(--border)}
+.task-editor-head h2{font-size:22px;line-height:1.2;letter-spacing:-.025em}
+.task-editor-head p{margin-top:5px}
+.task-editor-head .dialog-x{flex:0 0 auto;margin:-4px -4px 0 12px}

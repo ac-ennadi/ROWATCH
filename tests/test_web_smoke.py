@@ -5,6 +5,9 @@ def test_health_and_frontend_assets(client):
     assert client.get("/").status_code == 200
     assert client.get("/app.js").status_code == 200
     assert client.get("/app.css").status_code == 200
+    icon_library = client.get("/vendor/lucide.min.js")
+    assert icon_library.status_code == 200
+    assert b"createIcons" in icon_library.data
 
 
 def test_spa_fallback(client):

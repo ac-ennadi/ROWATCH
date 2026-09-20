@@ -77,8 +77,8 @@ def register():
     tracking_consent = data.get("tracking_consent") is True
     if not username or not email or not password:
         return jsonify({"error": "All fields are required"}), 400
-    if len(username) < 3 or len(username) > 64:
-        return jsonify({"error": "Username must be between 3 and 64 characters"}), 400
+    if len(username) < 3 or len(username) > 32:
+        return jsonify({"error": "Username must be between 3 and 32 characters"}), 400
     if len(email) > 254:
         return jsonify({"error": "Email is too long"}), 400
     if not valid_email(email):
@@ -173,8 +173,8 @@ def update_me():
     data = request.get_json(silent=True) or {}
     username = (data.get("username") or g.user.username).strip()
     email = (data.get("email") or g.user.email).strip().lower()
-    if len(username) < 3 or len(username) > 64:
-        return jsonify({"error": "Username must be between 3 and 64 characters"}), 400
+    if len(username) < 3 or len(username) > 32:
+        return jsonify({"error": "Username must be between 3 and 32 characters"}), 400
     if len(email) > 254:
         return jsonify({"error": "Email is too long"}), 400
     if not valid_email(email):

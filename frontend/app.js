@@ -16,6 +16,10 @@
     editingDocumentId: null,
     taskAssigneeFilter: 'all',
     activityMemberFilter: 'all',
+    activityPage: 1,
+    activitySearch: '',
+    taskComposerOpen: false,
+    actionConfirmResolve: null,
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -80,7 +84,7 @@
   }
 
   function roleName(role) {
-    return role === 'co_admin' ? 'Co-admin' : role === 'owner' ? 'Owner' : 'Member';
+    return role === 'co_admin' ? 'Project manager' : role === 'owner' ? 'Owner' : 'Member';
   }
 
   function isAdmin() {
@@ -137,8 +141,10 @@
     if (name === 'account') {
       if (!state.user) return route('login');
       if (state.user.consent_required) { showLegalConsent(); return; }
-      if (state.project) return openPanel('account');
-      return openStandaloneAccount();
+      setView('account');
+      syncUserUI();
+      await loadAccountPage();
+      return;
     }
   }
 
@@ -156,11 +162,23 @@
     applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
   }
 
+  function avatarColor(username) {
+    const palette = ['#0c66e4', '#1f845a', '#c25100', '#7e4eab', '#ae2e24', '#227d9b', '#5e4db2', '#00875a'];
+    const letter = String(username || 'R').trim().slice(0, 1).toUpperCase() || 'R';
+    return palette[(letter.charCodeAt(0) - 65 + palette.length) % palette.length];
+  }
+
   function syncUserUI() {
     const username = state.user?.username || 'Account';
-    const initial = username.slice(0, 1).toUpperCase() || 'R';
-    ['projectsUsername','dashboardUsername','sideUsername'].forEach(id => { if (el(id)) el(id).textContent = username; });
-    ['projectsAvatar','dashboardAvatar'].forEach(id => { if (el(id)) el(id).textContent = initial; });
+    const initial = username.trim().slice(0, 1).toUpperCase() || 'R';
+    ['projectsUsername','dashboardUsername','accountUsername','sideUsername'].forEach(id => { if (el(id)) el(id).textContent = username; });
+    ['projectsAvatar','dashboardAvatar','accountAvatar'].forEach(id => {
+      const node = el(id);
+      if (!node) return;
+      node.textContent = initial;
+      node.style.backgroundColor = avatarColor(username);
+      node.style.color = '#fff';
+    });
   }
 
   async function checkAuth() {
@@ -284,7 +302,6 @@
     updateCard(isAdmin() ? 'Total development time' : 'My development time', fmtDuration(stats.total_seconds));
     updateCard('Parts', compactNumber(stats.parts_added), `${compactNumber(stats.parts_removed)} removed`);
     updateCard('UI components', compactNumber(stats.ui_added), `${compactNumber(stats.ui_removed)} removed`);
-    updateConnectionBadge(activeCount ? 'Active Studio session' : 'No active Studio session', activeCount > 0);
   }
 
   async function login(event) {
@@ -334,7 +351,7 @@
 
   async function loadProjects() {
     const target = el('projectsList');
-    target.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+    target.innerHTML = '<div class="projects-skeleton" aria-label="Loading projects"><div class="skeleton skeleton-project-card"><i></i><b></b><span></span><small></small></div><div class="skeleton skeleton-project-card"><i></i><b></b><span></span><small></small></div><div class="skeleton skeleton-project-card"><i></i><b></b><span></span><small></small></div></div>';
     const {ok, data} = await api('/projects/');
     if (!ok) {
       if (data.error === 'Unauthorized') return route('login');
@@ -342,17 +359,13 @@
       return;
     }
     state.projects = data;
-    if (!data.length) {
-      target.innerHTML = `<div class="empty-state"><h2>No projects yet</h2><p>Create your first project, then connect Roblox Studio from the dashboard.</p><button class="btn btn-primary" type="button" id="emptyCreateProject">Create project</button></div>`;
-      el('emptyCreateProject').addEventListener('click', openCreateProject);
-      return;
-    }
     target.innerHTML = data.map(p => `
       <article class="project-card" tabindex="0" data-project-id="${esc(p.id)}" aria-label="Open ${esc(p.name)}">
         <div class="project-card-head"><h2>${esc(p.name)}</h2></div>
-        <p class="muted">Open the project dashboard, Studio integration, analytics, and team controls.</p>
-        <div class="project-card-meta"><span>${p.member_count} member${p.member_count === 1 ? '' : 's'}</span><span>${esc(roleName(p.role))}</span><span>Created ${esc(fmtDate(p.created_at, false))}</span></div>
-      </article>`).join('');
+        <p class="muted">${p.member_count} member${p.member_count === 1 ? '' : 's'} · ${esc(roleName(p.role))}</p>
+        <div class="project-card-meta"><span>Created ${esc(fmtDate(p.created_at, false))}</span></div>
+      </article>`).join('') + '<button class="create-project-card" id="createProjectBtn" type="button"><span>+</span>Create new project</button>';
+    el('createProjectBtn').addEventListener('click', openCreateProject);
     $$('.project-card', target).forEach(card => {
       const open = () => openProject(card.dataset.projectId);
       card.addEventListener('click', open);
@@ -394,7 +407,7 @@
   function syncProjectChrome() {
     if (!state.project) return;
     el('sidebarProjectName').textContent = state.project.name;
-    el('sidebarProjectPlan').textContent = roleName(state.project.role);
+    el('sidebarProjectPlan').textContent = '';
     $$('.admin-only').forEach(node => node.style.display = isAdmin() ? '' : 'none');
     syncUserUI();
     applyTheme(localStorage.getItem('rowatch-theme') || 'light');
@@ -406,10 +419,12 @@
     state.panel = name;
     $$('.side-nav button').forEach(button => button.classList.toggle('active', button.dataset.panel === name));
     const titles = {overview:'Overview',activity:'Activity',tasks:'Tasks',documents:'Documentation',analytics:'Analytics',members:'Members',integration:'Studio Integration',settings:'Project Settings',account:'Account'};
-    el('panelTitle').textContent = titles[name] || 'Dashboard';
+    const descriptions = {overview:`${state.project.name} development summary.`,activity:'',tasks:'Organize project work and assignments.',documents:'Project notes, setup guides, and shared references.',analytics:'Development time, code change volume, and member performance.',members:'',integration:'Connect the RoWatch plugin to this project.',settings:`Manage settings for ${state.project.name}.`,account:'Manage your RoWatch account.'};
+    el('panelTitle').textContent = name === 'members' ? '' : (titles[name] || 'Dashboard');
+    el('panelDescription').textContent = descriptions[name] || '';
     el('topbarBreadcrumb').textContent = name === 'account' ? 'RoWatch / Account' : `${state.project.name} / ${titles[name]}`;
     const content = el('panelContent');
-    content.innerHTML = '<div class="skeleton"></div>';
+    content.innerHTML = '<div class="panel-skeleton" aria-label="Loading dashboard"><div class="skeleton-kpis"><div class="skeleton skeleton-kpi"><i></i><b></b><span></span></div><div class="skeleton skeleton-kpi"><i></i><b></b><span></span></div><div class="skeleton skeleton-kpi"><i></i><b></b><span></span></div><div class="skeleton skeleton-kpi"><i></i><b></b><span></span></div></div><div class="skeleton-panels"><div class="skeleton skeleton-panel"></div><div class="skeleton skeleton-panel"></div></div></div>';
     closeSidebar();
 
     const loaders = {overview: loadOverview, activity: loadActivity, tasks: loadTasks, documents: loadDocuments, analytics: loadAnalytics, members: loadMembers, integration: loadIntegration, settings: loadSettings, account: loadAccountPanel};
@@ -423,7 +438,7 @@
 
     const [{ok, data}, activityResult] = await Promise.all([
       api(`/dashboard/${state.project.id}/overview`),
-      api(`/dashboard/${state.project.id}/activity`),
+      api(`/dashboard/${state.project.id}/activity?page=1`),
     ]);
     if (!ok) return renderError(content, data.error);
     const members = data.members || [];
@@ -431,8 +446,7 @@
     const charsAdded = members.reduce((sum, m) => sum + m.stats.chars_added, 0);
     const charsRemoved = members.reduce((sum, m) => sum + m.stats.chars_removed, 0);
     const sessions = members.reduce((sum, m) => sum + m.stats.total_sessions, 0);
-    const recent = activityResult.ok ? activityResult.data.slice(0, 7) : [];
-    updateConnectionBadge(members.some(m => m.active) ? 'Active Studio session' : 'No active Studio session', members.some(m => m.active));
+    const recent = activityResult.ok ? (activityResult.data.items || []).slice(0, 7) : [];
 
     content.innerHTML = `
       <div class="kpi-grid">
@@ -458,7 +472,6 @@
     const {ok, data} = await api(`/dashboard/${state.project.id}/me`);
     if (!ok) return renderError(content, data.error);
     const s = data.stats;
-    updateConnectionBadge((data.sessions || []).some(session => session.active) ? 'Your Studio session is active' : 'No active Studio session', (data.sessions || []).some(session => session.active));
     content.innerHTML = `
       <div class="kpi-grid">
         ${kpi('My development time', fmtDuration(s.total_seconds), 'All retained sessions')}
@@ -492,39 +505,33 @@
 
   async function loadActivity() {
     const content = el('panelContent');
-    let events = [];
-    let members = [];
-    if (isAdmin()) {
-      const [activityResult, membersResult] = await Promise.all([
-        api(`/dashboard/${state.project.id}/activity`),
-        api(`/projects/${state.project.id}/members`),
-      ]);
-      if (!activityResult.ok) return renderError(content, activityResult.data.error);
-      events = activityResult.data;
-      members = membersResult.ok ? membersResult.data : [];
-    } else {
-      const result = await api(`/dashboard/${state.project.id}/me`);
-      if (!result.ok) return renderError(content, result.data.error);
-      events = (result.data.sessions || []).flatMap(session => [
-        ...(session.events || []).map(event => ({...event, username: state.user.username, session_id: session.id})),
-        ...(session.instance_events || []).map(event => ({...event, username: state.user.username, session_id: session.id, script: event.instance_name, event_type: `${event.category}_${event.action}`})),
-      ]).sort((a,b) => String(b.occurred_at).localeCompare(String(a.occurred_at)));
-      members = [{username: state.user.username}];
-      state.activityMemberFilter = 'all';
-    }
+    const params = new URLSearchParams({page:String(state.activityPage), q:state.activitySearch});
+    if (isAdmin() && state.activityMemberFilter !== 'all') params.set('member', state.activityMemberFilter);
+    const requests = [api(`/dashboard/${state.project.id}/activity?${params}`)];
+    if (isAdmin()) requests.push(api(`/projects/${state.project.id}/members`));
+    const [activityResult, membersResult] = await Promise.all(requests);
+    if (!activityResult.ok) return renderError(content, activityResult.data.error);
+    const activity = activityResult.data;
+    const events = activity.items || [];
+    const members = isAdmin() && membersResult?.ok ? membersResult.data : [];
     if (state.activityMemberFilter !== 'all' && !members.some(member => member.username === state.activityMemberFilter)) {
       state.activityMemberFilter = 'all';
+      state.activityPage = 1;
+      return loadActivity();
     }
-    const visibleEvents = state.activityMemberFilter === 'all'
-      ? events
-      : events.filter(event => event.username === state.activityMemberFilter);
-    const filter = isAdmin() ? `<div class="activity-filter"><label>Filter by member<select id="activityMemberFilter"><option value="all">All members</option>${members.map(member=>`<option value="${esc(member.username)}" ${state.activityMemberFilter===member.username?'selected':''}>${esc(member.username)}</option>`).join('')}</select></label><span class="role-box">${visibleEvents.length}/${events.length} shown</span></div>` : '';
+    const memberFilter = isAdmin() ? `<label>Member<select id="activityMemberFilter"><option value="all">All members</option>${members.map(member=>`<option value="${esc(member.username)}" ${state.activityMemberFilter===member.username?'selected':''}>${esc(member.username)}</option>`).join('')}</select></label>` : '';
     const exportButton = isAdmin() && state.project.plan !== 'free' ? `<a class="btn btn-secondary" href="/dashboard/${state.project.id}/export.csv" download>Export CSV</a>` : '';
-    content.innerHTML = `<div class="toolbar"><div><h2>${isAdmin() ? 'Project activity' : 'My activity'}</h2><p>Newest Studio events first. Up to 200 are shown.</p></div><div class="toolbar-actions">${filter}${exportButton}</div></div>${visibleEvents.length ? activityTable(visibleEvents.slice(0,200)) : emptyInline('No matching activity', state.activityMemberFilter==='all'?'Connect the plugin and start a session.':'This member has no recorded activity.')}`;
-    el('activityMemberFilter')?.addEventListener('change', event => {
-      state.activityMemberFilter = event.target.value;
-      loadActivity();
+    const pager = `<div class="activity-pager"><button id="activityPrevious" class="btn btn-secondary" type="button" ${activity.page<=1?'disabled':''}>Previous</button><span>Page ${activity.page} of ${activity.pages} · ${activity.total} results</span><button id="activityNext" class="btn btn-secondary" type="button" ${activity.page>=activity.pages?'disabled':''}>Next</button></div>`;
+    content.innerHTML = `<div class="toolbar activity-toolbar"><div class="activity-query"><label>Search activity<input id="activitySearch" type="search" maxlength="100" value="${esc(state.activitySearch)}" placeholder="Member, target, event, or class" /></label>${memberFilter}</div><div class="toolbar-actions">${exportButton}</div></div>${events.length ? activityTable(events) : emptyInline('No matching activity', 'Try a different search or member filter.')}${pager}`;
+    let searchTimer;
+    el('activitySearch')?.addEventListener('input', event => {
+      clearTimeout(searchTimer);
+      const value = event.target.value;
+      searchTimer = setTimeout(() => { state.activitySearch=value.trim(); state.activityPage=1; loadActivity(); }, 300);
     });
+    el('activityMemberFilter')?.addEventListener('change', event => { state.activityMemberFilter=event.target.value; state.activityPage=1; loadActivity(); });
+    el('activityPrevious')?.addEventListener('click', () => { state.activityPage=Math.max(1,state.activityPage-1); loadActivity(); });
+    el('activityNext')?.addEventListener('click', () => { state.activityPage+=1; loadActivity(); });
   }
 
   function renderMarkdown(markdown = '') {
@@ -573,21 +580,34 @@
       : tasks.filter(task => task.assignments.some(item => item.user_id === state.taskAssigneeFilter));
     const editing = tasks.find(task => task.id === state.editTaskId);
     const memberChecks = members.map(member => `<label class="assignee-option"><input type="checkbox" name="taskAssignee" value="${esc(member.user_id)}" ${editing?.assignments.some(item=>item.user_id===member.user_id)?'checked':''}/><span>${esc(member.username)}</span><small>${esc(roleName(member.role))}</small></label>`).join('');
-    const editor = isAdmin() ? `<section class="panel-card task-editor"><div class="panel-card-head"><div><h2>${editing?'Edit task':'Create task'}</h2><p>Assign one task to one or more project members.</p></div></div><div class="task-form-grid"><label>Title<input id="taskTitle" maxlength="200" value="${esc(editing?.title||'')}" placeholder="Ship inventory UI"/></label><label>Due date<input id="taskDue" type="date" value="${esc(editing?.due_at?.slice(0,10)||'')}"/></label></div><label>Description (Markdown)<textarea id="taskDescription" rows="4" placeholder="## Acceptance criteria">${esc(editing?.description_md||'')}</textarea></label><div class="assignee-grid">${memberChecks || '<span class="muted">Add project members before assigning tasks.</span>'}</div><div class="task-actions"><button id="saveTask" class="btn btn-primary" type="button">${editing?'Save changes':'Create task'}</button>${editing?'<button id="cancelTaskEdit" class="btn btn-secondary" type="button">Cancel</button>':''}</div><p id="taskError" class="form-error"></p></section>` : '';
+    const editor = isAdmin() && (state.taskComposerOpen || editing) ? `<section class="panel-card task-editor"><div class="panel-card-head task-editor-head"><div><h2>${editing?'Edit task':'Create task'}</h2><p>Assign one task to one or more project members.</p></div><button id="closeTaskEditor" class="dialog-x" type="button" aria-label="Close task editor">×</button></div><div class="task-form-grid"><label>Title<input id="taskTitle" maxlength="32" value="${esc(editing?.title||'')}" placeholder="Ship inventory UI"/></label><label>Due date<input id="taskDue" type="date" value="${esc(editing?.due_at?.slice(0,10)||'')}"/></label></div><label>Description (Markdown)<textarea id="taskDescription" rows="4" placeholder="## Acceptance criteria">${esc(editing?.description_md||'')}</textarea></label><div class="assignee-help"><strong>Assign task to</strong><span>Select the checkboxes for the people responsible. You can choose multiple people.</span></div><div class="assignee-grid">${memberChecks || '<span class="muted">Add project members before assigning tasks.</span>'}</div><div class="task-actions"><button id="saveTask" class="btn btn-primary" type="button">${editing?'Save changes':'Create task'}</button><button id="cancelTaskEdit" class="btn btn-secondary" type="button">Cancel</button></div><p id="taskError" class="form-error"></p></section>` : '';
     const cards = visibleTasks.map(task => {
       const mine = task.assigned_to_me;
       const assignees = task.assignments.map(item=>`<span class="assignee-chip ${item.completed?'done':''}">${item.completed?'✓ ':''}${esc(item.username)}</span>`).join('');
       return `<article class="task-card ${task.my_completed?'task-done':''}"><div class="task-check">${mine?`<input type="checkbox" data-task-complete="${esc(task.id)}" ${task.my_completed?'checked':''} aria-label="Complete ${esc(task.title)}"/>`:'<span>•</span>'}</div><div class="task-body"><div class="task-title-row"><h2>${esc(task.title)}</h2><span>${task.completed_count}/${task.assignments.length} complete</span></div>${task.description_md?`<div class="markdown task-markdown">${renderMarkdown(task.description_md)}</div>`:''}<div class="task-meta">${task.due_at?`<span>Due ${esc(fmtDate(task.due_at,false))}</span>`:'<span>No due date</span>'}<span>Created by ${esc(task.created_by)}</span></div><div class="assignee-chips">${assignees||'<span class="muted">Unassigned</span>'}</div></div>${isAdmin()?`<div class="task-admin-actions"><button class="mini-btn" data-edit-task="${esc(task.id)}">Edit</button><button class="mini-btn danger" data-delete-task="${esc(task.id)}">Delete</button></div>`:''}</article>`;
     }).join('');
     const filterOptions = [`<option value="all">All members</option>`, ...members.map(member => `<option value="${esc(member.user_id)}" ${state.taskAssigneeFilter===member.user_id?'selected':''}>${esc(member.username)}</option>`)].join('');
-    content.innerHTML = `<div class="toolbar"><div><h2>Team tasks</h2><p>Completion is tracked separately for every assignee.</p></div><div class="task-filter"><label>Filter by assignee<select id="taskAssigneeFilter">${filterOptions}</select></label><span class="role-box">${visibleTasks.length}/${tasks.length} shown · ${taskUsage.limit===null?'Unlimited':`${taskUsage.current}/${taskUsage.limit}`}</span></div></div>${editor}<div class="task-list">${cards || emptyInline('No matching tasks', state.taskAssigneeFilter==='all'?(isAdmin()?'Create the first team task above.':'Your project admins have not created tasks yet.'):'No tasks are assigned to this member.')}</div>`;
+    content.innerHTML = `<div class="toolbar task-toolbar"><div></div><div class="task-filter"><label>Filter by assignee<select id="taskAssigneeFilter">${filterOptions}</select></label>${isAdmin()?'<button id="createTaskButton" class="btn btn-primary" type="button">+ Create task</button>':''}<span class="role-box">${visibleTasks.length}/${tasks.length} shown · ${taskUsage.limit===null?'Unlimited':`${taskUsage.current}/${taskUsage.limit}`}</span></div></div><div class="task-list">${cards || emptyInline('No matching tasks', state.taskAssigneeFilter==='all'?(isAdmin()?'No tasks here. Use Create task to add one.':'Your project admins have not created tasks yet.'):'No tasks are assigned to this member.')}</div>`;
+    const taskDialog = el('taskEditorDialog');
+    el('taskDialogContent').innerHTML = editor;
+    if (editor && !taskDialog.open) taskDialog.showModal();
+    if (!editor && taskDialog.open) taskDialog.close();
+    el('createTaskButton')?.addEventListener('click',()=>{state.editTaskId=null;state.taskComposerOpen=true;loadTasks(true);});
     el('taskAssigneeFilter').value = state.taskAssigneeFilter;
     el('taskAssigneeFilter').addEventListener('change', event => { state.taskAssigneeFilter=event.target.value; loadTasks(true); });
     el('saveTask')?.addEventListener('click', saveTask);
-    el('cancelTaskEdit')?.addEventListener('click',()=>{state.editTaskId=null;loadTasks();});
+    el('closeTaskEditor')?.addEventListener('click', closeTaskEditor);
+    el('cancelTaskEdit')?.addEventListener('click', closeTaskEditor);
     $$('[data-task-complete]',content).forEach(node=>node.addEventListener('change',()=>toggleTask(node.dataset.taskComplete,node.checked)));
-    $$('[data-edit-task]',content).forEach(node=>node.addEventListener('click',()=>{state.editTaskId=node.dataset.editTask;loadTasks();}));
+    $$('[data-edit-task]',content).forEach(node=>node.addEventListener('click',()=>{state.editTaskId=node.dataset.editTask;state.taskComposerOpen=true;loadTasks();}));
     $$('[data-delete-task]',content).forEach(node=>node.addEventListener('click',()=>deleteTask(node.dataset.deleteTask)));
+  }
+
+  function closeTaskEditor() {
+    state.editTaskId = null;
+    state.taskComposerOpen = false;
+    if (el('taskEditorDialog').open) el('taskEditorDialog').close();
+    loadTasks(true);
   }
 
   async function saveTask() {
@@ -597,7 +617,7 @@
     const path = state.editTaskId ? `/workspace/${state.project.id}/tasks/${state.editTaskId}` : `/workspace/${state.project.id}/tasks`;
     const result = await api(path,{method:state.editTaskId?'PATCH':'POST',body:JSON.stringify(payload)});
     if(!result.ok) return el('taskError').textContent=result.data.error||'Could not save task.';
-    state.editTaskId=null; toast('Task saved'); await loadTasks(true);
+    state.editTaskId=null; state.taskComposerOpen=false; el('taskEditorDialog').close(); toast('Task saved'); await loadTasks(true);
   }
 
   async function toggleTask(taskId, completed) {
@@ -606,8 +626,29 @@
     await loadTasks(true);
   }
 
+  function requestConfirmation({title='Confirm action',message='',confirmLabel='Confirm',phrase=''}) {
+    const dialog=el('actionConfirmDialog');
+    el('actionConfirmTitle').textContent=title;
+    el('actionConfirmMessage').textContent=message;
+    el('actionConfirmSubmit').textContent=confirmLabel;
+    el('actionConfirmPhraseWrap').hidden=!phrase;
+    el('actionConfirmPhrase').value='';
+    el('actionConfirmPhrase').dataset.expected=phrase;
+    el('actionConfirmError').textContent='';
+    dialog.showModal();
+    setTimeout(()=>el('actionConfirmCancel').focus(),0);
+    return new Promise(resolve=>{state.actionConfirmResolve=resolve;});
+  }
+
+  function finishConfirmation(accepted) {
+    const resolve=state.actionConfirmResolve;
+    state.actionConfirmResolve=null;
+    if(el('actionConfirmDialog').open)el('actionConfirmDialog').close();
+    resolve?.(accepted);
+  }
+
   async function deleteTask(taskId) {
-    if(!confirm('Delete this task for every assignee?')) return;
+    if(!await requestConfirmation({title:'Delete task?',message:'This removes the task for every assignee.',confirmLabel:'Delete task'})) return;
     const result=await api(`/workspace/${state.project.id}/tasks/${taskId}`,{method:'DELETE'});
     if(!result.ok)return toast(result.data.error||'Could not delete task.');
     if(state.editTaskId===taskId)state.editTaskId=null;toast('Task deleted');await loadTasks(true);
@@ -624,26 +665,50 @@
     const list=documents.map(doc=>`<button class="document-link ${doc.id===state.activeDocumentId?'active':''}" data-document-id="${esc(doc.id)}"><strong>${esc(doc.title)}</strong><small>Updated ${esc(fmtDate(doc.updated_at))}</small></button>`).join('');
     let detail;
     const editingDocument = selected && isAdmin() && state.editingDocumentId === selected.id;
-    if(editingDocument)detail=`<div class="document-editor"><input id="documentTitle" maxlength="200" value="${esc(selected.title)}"/><textarea id="documentContent" rows="18" placeholder="# Documentation">${esc(selected.content_md)}</textarea><div class="task-actions"><button id="saveDocument" class="btn btn-primary">Save document</button><button id="cancelDocumentEdit" class="btn btn-secondary">Cancel</button><button id="deleteDocument" class="btn btn-danger">Delete</button></div><h3>Preview</h3><div class="markdown document-preview">${renderMarkdown(selected.content_md)}</div></div>`;
-    else if(selected)detail=`<article class="document-reader"><div class="document-reader-head"><h1>${esc(selected.title)}</h1>${isAdmin()?'<button id="editDocument" class="btn btn-primary">Edit document</button>':''}</div><div class="markdown">${renderMarkdown(selected.content_md)}</div></article>`;
+    const documentWordLimit = documentUsage.plan === 'free' ? 1028 : null;
+    const documentFooter = selected ? `<footer class="document-meta-footer"><span>Created by <strong>${esc(selected.created_by)}</strong></span><span>Last modified by <strong>${esc(selected.updated_by || selected.created_by)}</strong></span></footer>` : '';
+    if(editingDocument)detail=`<div class="document-editor"><input id="documentTitle" maxlength="32" value="${esc(selected.title)}"/><textarea id="documentContent" rows="18" placeholder="# Documentation">${esc(selected.content_md)}</textarea><div id="documentContentCount" class="content-counter" aria-live="polite"></div><div class="task-actions"><button id="saveDocument" class="btn btn-primary">Save document</button><button id="cancelDocumentEdit" class="btn btn-secondary">Cancel</button><button id="deleteDocument" class="btn btn-danger">Delete</button></div><h3>Preview</h3><div class="markdown document-preview">${renderMarkdown(selected.content_md)}</div>${documentFooter}</div>`;
+    else if(selected)detail=`<article class="document-reader"><div class="document-reader-head"><h1>${esc(selected.title)}</h1>${isAdmin()?'<button id="editDocument" class="btn btn-primary">Edit document</button>':''}</div><div class="markdown">${renderMarkdown(selected.content_md)}</div>${documentFooter}</article>`;
     else detail=emptyInline('No documentation yet',isAdmin()?'Create the first Markdown document.':'Project admins have not added documentation yet.');
-    content.innerHTML=`<div class="toolbar"><div><h2>Project documentation</h2><p>Write guides, specifications, notes, and team knowledge in Markdown.</p></div><div class="task-filter"><span class="role-box">${documentUsage.limit===null?'Unlimited':`${documentUsage.current}/${documentUsage.limit} documents`}</span>${isAdmin()?'<button id="newDocument" class="btn btn-primary">+ New document</button>':''}</div></div><div class="documents-layout"><aside class="documents-list">${list||'<span class="muted">No documents</span>'}</aside><section class="panel-card">${detail}</section></div>`;
+    content.innerHTML=`<div class="toolbar documents-toolbar"><div></div><div class="task-filter"><span class="role-box">${documentUsage.limit===null?'Unlimited':`${documentUsage.current}/${documentUsage.limit} documents`}</span>${isAdmin()?'<button id="newDocument" class="btn btn-primary">+ New document</button>':''}</div></div><div class="documents-layout"><aside class="documents-list">${list||'<span class="muted">No documents</span>'}</aside><section class="panel-card">${detail}</section></div>`;
     $$('[data-document-id]',content).forEach(node=>node.addEventListener('click',()=>{state.activeDocumentId=node.dataset.documentId;state.editingDocumentId=null;loadDocuments();}));
-    el('newDocument')?.addEventListener('click',createDocument);
+    el('newDocument')?.addEventListener('click',openDocumentTitleDialog);
     el('editDocument')?.addEventListener('click',()=>{state.editingDocumentId=state.activeDocumentId;loadDocuments();});
     el('cancelDocumentEdit')?.addEventListener('click',()=>{state.editingDocumentId=null;loadDocuments();});
     el('saveDocument')?.addEventListener('click',saveDocument);
     el('deleteDocument')?.addEventListener('click',deleteDocument);
-    el('documentContent')?.addEventListener('input', event => {
+    const updateDocumentCounter = value => {
+      const counter = el('documentContentCount');
+      if (!counter) return;
+      const words = String(value || '').trim() ? String(value).trim().split(/\s+/).length : 0;
+      const characters = String(value || '').length;
+      counter.textContent = documentWordLimit === null
+        ? `${characters.toLocaleString()} characters · ${words.toLocaleString()} words`
+        : `${characters.toLocaleString()} characters · ${words.toLocaleString()} / ${documentWordLimit.toLocaleString()} words`;
+      counter.classList.toggle('over-limit', documentWordLimit !== null && words > documentWordLimit);
+    };
+    const documentContent = el('documentContent');
+    if (documentContent) updateDocumentCounter(documentContent.value);
+    documentContent?.addEventListener('input', event => {
+      updateDocumentCounter(event.target.value);
       const preview = $('.document-preview', content);
       if (preview) preview.innerHTML = renderMarkdown(event.target.value);
     });
   }
 
-  async function createDocument(){
-    const title=prompt('Document title');if(!title?.trim())return;
+  function openDocumentTitleDialog(){
+    el('newDocumentTitle').value='';
+    el('documentTitleError').textContent='';
+    el('documentTitleDialog').showModal();
+    setTimeout(()=>el('newDocumentTitle').focus(),0);
+  }
+
+  async function createDocument(event){
+    event?.preventDefault();
+    const title=el('newDocumentTitle').value.trim();if(!title)return;
     const result=await api(`/workspace/${state.project.id}/documents`,{method:'POST',body:JSON.stringify({title:title.trim(),content_md:'# '+title.trim()+'\n'})});
-    if(!result.ok)return toast(result.data.error||'Could not create document.');
+    if(!result.ok)return el('documentTitleError').textContent=result.data.error||'Could not create document.';
+    el('documentTitleDialog').close();
     state.activeDocumentId=result.data.id;state.editingDocumentId=null;await loadDocuments(true);
   }
 
@@ -653,7 +718,7 @@
   }
 
   async function deleteDocument(){
-    if(!confirm('Permanently delete this document?'))return;
+    if(!await requestConfirmation({title:'Delete document?',message:'This document will be permanently removed.',confirmLabel:'Delete document'}))return;
     const result=await api(`/workspace/${state.project.id}/documents/${state.activeDocumentId}`,{method:'DELETE'});
     if(!result.ok)return toast(result.data.error||'Could not delete document.');state.activeDocumentId=null;state.editingDocumentId=null;toast('Document deleted');await loadDocuments(true);
   }
@@ -702,7 +767,7 @@
   function memberActions(member) {
     if (!isOwner() || member.role === 'owner') return '<span class="muted">—</span>';
     const next = member.role === 'co_admin' ? 'member' : 'co_admin';
-    return `<div class="member-actions"><button class="mini-btn" type="button" data-member-role="${next}" data-user-id="${esc(member.user_id)}">Make ${next === 'co_admin' ? 'co-admin' : 'member'}</button><button class="mini-btn danger" type="button" data-member-remove data-user-id="${esc(member.user_id)}" data-username="${esc(member.username)}">Remove</button></div>`;
+    return `<div class="member-actions"><button class="mini-btn" type="button" data-member-role="${next}" data-user-id="${esc(member.user_id)}">Make ${next === 'co_admin' ? 'Project manager' : 'member'}</button><button class="mini-btn danger" type="button" data-member-remove data-user-id="${esc(member.user_id)}" data-username="${esc(member.username)}">Remove</button></div>`;
   }
 
   async function inviteMember(event) {
@@ -721,7 +786,7 @@
   }
 
   async function removeMember(userId, username) {
-    if (!confirm(`Remove ${username} from this project?`)) return;
+    if (!await requestConfirmation({title:'Remove member?',message:`Remove ${username} from this project?`,confirmLabel:'Remove member'})) return;
     const {ok, data} = await api(`/projects/${state.project.id}/members/${userId}`, {method:'DELETE'});
     if (!ok) return toast(data.error || 'Could not remove member.');
     toast(`${username} removed`); await loadMembers();
@@ -741,7 +806,7 @@
     const p = state.project;
     content.innerHTML = `
       <div class="settings-stack">
-        <section class="settings-row"><h2>Project details</h2><p>${isOwner() ? 'Rename the project. Changes are visible to every member.' : 'Only the project owner can rename this project.'}</p><div class="key-line"><input id="projectNameInput" value="${esc(p.name)}" ${isOwner() ? '' : 'readonly'}/>${isOwner() ? '<button id="saveProjectName" class="btn btn-primary" type="button">Save</button>' : ''}</div></section>
+        <section class="settings-row"><h2>Project details</h2><p>${isOwner() ? 'Rename the project. Changes are visible to every member.' : 'Only the project owner can rename this project.'}</p><div class="key-line"><input id="projectNameInput" maxlength="32" value="${esc(p.name)}" ${isOwner() ? '' : 'readonly'}/>${isOwner() ? '<button id="saveProjectName" class="btn btn-primary" type="button">Save</button>' : ''}</div></section>
         ${isOwner() ? '<section class="settings-row danger-zone"><h2>Delete project</h2><p>Permanently deletes this project, its memberships, sessions, and script events.</p><button id="deleteProject" class="btn btn-danger" type="button">Delete project</button></section>' : ''}
       </div>`;
     el('saveProjectName')?.addEventListener('click', saveProjectName);
@@ -759,8 +824,7 @@
   }
 
   async function deleteProject() {
-    const typed = prompt(`Type ${state.project.name} to permanently delete this project.`);
-    if (typed !== state.project.name) return;
+    if (!await requestConfirmation({title:'Delete project?',message:'This permanently removes the project, memberships, sessions, and activity.',confirmLabel:'Delete project',phrase:state.project.name})) return;
     const {ok, data} = await api(`/projects/${state.project.id}`, {method:'DELETE'});
     if (!ok) return toast(data.error || 'Could not delete project.');
     toast('Project deleted');
@@ -771,7 +835,7 @@
     const current = state.user?.plan || 'free';
     const expires = state.user?.plan_expires_at ? `Expires ${fmtDate(state.user.plan_expires_at,false)}` : (current === 'free' ? 'No expiry' : 'Active');
     const plans = [
-      {id:'free',price:'$0',period:'forever',features:['1 owned project','5 members per project','10 tasks · 3 documents','7 days history']},
+      {id:'free',price:'$0',period:'forever',features:['1 owned project','5 members per project','10 tasks · 3 documents','1,028 words per document','7 days history']},
       {id:'pro',price:'$5.99',period:'month',features:['3 owned projects','15 members per project','Unlimited tasks & documents','60 days history']},
       {id:'studio',price:'$14.99',period:'month',features:['Unlimited projects','Unlimited members','Unlimited tasks & documents','Unlimited history']},
     ];
@@ -806,6 +870,7 @@
     input.value='';
     toast(`${result.data.plan.toUpperCase()} activated for ${result.data.duration_days} days`);
     if(root.closest('dialog')){root.closest('dialog').close();await route('projects');}
+    else if(el('view-account').classList.contains('active')) await loadAccountPage();
     else await loadAccountPanel();
   }
 
@@ -821,7 +886,7 @@
 
   function accountContentHtml(apiKey) {
     const visibleKey = apiKey.api_key || apiKey.masked_key || 'Not generated';
-    return `<section class="panel-card"><div class="panel-card-head"><div><h2>Account details</h2><p>Your username identifies you across project activity.</p></div></div><div class="account-grid"><label>Username<input data-account-username value="${esc(state.user.username)}"/></label><label>Email<input data-account-email type="email" value="${esc(state.user.email)}"/></label></div><button class="btn btn-primary" type="button" data-save-account>Save account</button></section><section class="panel-card api-key-card"><div class="panel-card-head"><div><h2>Studio API key</h2><p>Paste this account key into the plugin. It will fetch every project you belong to.</p></div></div><div class="redeem-code-line"><input class="mono" data-account-api-key value="${esc(visibleKey)}" readonly/><button class="btn btn-secondary" type="button" data-copy-api-key ${apiKey.api_key?'':'disabled'}>Copy</button></div><p class="muted">${apiKey.api_key?'This is the only time the complete key is shown.':'Only the key prefix is stored for display. Regenerate if you no longer have the complete key.'}</p><div class="dialog-actions"><button class="btn btn-secondary" type="button" data-regenerate-api-key>Regenerate API key</button></div><p class="form-error" data-api-key-error></p></section>`;
+    return `<section class="panel-card"><div class="panel-card-head"><div><h2>Account details</h2><p>Your username identifies you across project activity.</p></div></div><div class="account-grid"><label>Username<input data-account-username maxlength="32" value="${esc(state.user.username)}"/></label><label>Email<input data-account-email type="email" value="${esc(state.user.email)}"/></label></div><button class="btn btn-primary" type="button" data-save-account>Save account</button></section><section class="panel-card api-key-card"><div class="panel-card-head"><div><h2>Studio API key</h2><p>Paste this account key into the plugin. It will fetch every project you belong to.</p></div></div><div class="redeem-code-line"><input class="mono" data-account-api-key value="${esc(visibleKey)}" readonly/><button class="btn btn-secondary" type="button" data-copy-api-key ${apiKey.api_key?'':'disabled'}>Copy</button></div><p class="muted">${apiKey.api_key?'This is the only time the complete key is shown.':'Only the key prefix is stored for display. Regenerate if you no longer have the complete key.'}</p><div class="dialog-actions"><button class="btn btn-secondary" type="button" data-regenerate-api-key>Regenerate API key</button></div><p class="form-error" data-api-key-error></p></section>`;
   }
 
   function wireAccountContent(root) {
@@ -842,7 +907,7 @@
       copyText($('[data-account-api-key]', root).value, 'API key copied');
     });
     $('[data-regenerate-api-key]', root)?.addEventListener('click', async () => {
-      if (!confirm('Regenerate the API key? Every connected Studio plugin will be signed out immediately.')) return;
+      if (!await requestConfirmation({title:'Regenerate API key?',message:'Every connected Studio plugin will be signed out immediately.',confirmLabel:'Regenerate key'})) return;
       const result = await api('/auth/api-key/regenerate', {method:'POST', body:'{}'});
       if (!result.ok) return $('[data-api-key-error]', root).textContent = result.data.error || 'Could not regenerate API key.';
       const input = $('[data-account-api-key]', root);
@@ -861,6 +926,38 @@
     content.innerHTML = `<div class="account-panel">${accountContentHtml(keyResult.data)}${planChooserHtml()}</div>`;
     wireAccountContent(content);
     wireAccountPlanButtons(content);
+  }
+
+  function switchAccountSection(name) {
+    $$('.account-page-section').forEach(section=>section.hidden=section.dataset.accountPane!==name);
+    $$('[data-account-section]').forEach(button=>button.classList.toggle('active',button.dataset.accountSection===name));
+  }
+
+  async function loadAccountPage() {
+    const content = el('accountPageContent');
+    content.innerHTML = '<div class="panel-skeleton"><div class="skeleton skeleton-panel"></div><div class="skeleton skeleton-panel"></div></div>';
+    const result = await api('/auth/me');
+    if (!result.ok) return renderError(content, result.data.error);
+    state.user = result.data;
+    syncUserUI();
+    const keyResult = await api('/auth/api-key', {method:'POST', body:'{}'});
+    content.innerHTML = '<section id="account-profile" class="account-page-section">' + accountContentHtml(keyResult.data) + '</section><section id="account-plan" class="account-page-section">' + planChooserHtml() + '</section><section id="account-appearance" class="account-page-section appearance-section"><div><h2>Appearance</h2><p>Choose the interface theme used across the landing page and application.</p></div><button id="accountAppearanceToggle" class="btn btn-secondary" type="button">Toggle light / dark</button></section>';
+    const apiCard = content.querySelector('.api-key-card');
+    if (apiCard) {
+      const studioSection=document.createElement('section');
+      studioSection.id='account-studio';
+      studioSection.className='account-page-section';
+      studioSection.dataset.accountPane='studio';
+      content.insertBefore(studioSection, el('account-plan'));
+      studioSection.appendChild(apiCard);
+    }
+    el('account-profile').dataset.accountPane='profile';
+    el('account-plan').dataset.accountPane='plan';
+    el('account-appearance').dataset.accountPane='appearance';
+    wireAccountContent(content);
+    wireAccountPlanButtons(content);
+    el('accountAppearanceToggle')?.addEventListener('click', toggleTheme);
+    switchAccountSection('profile');
   }
 
   async function openStandaloneAccount() {
@@ -1003,11 +1100,45 @@
     el('createProjectForm').addEventListener('submit', createProject);
     el('inviteForm').addEventListener('submit', inviteMember);
     el('checkoutForm').addEventListener('submit', checkout);
-    el('createProjectBtn').addEventListener('click', openCreateProject);
-    el('logoutButton').addEventListener('click', logout);
-    el('themeToggle').addEventListener('click', toggleTheme);
+    el('documentTitleForm').addEventListener('submit', createDocument);
+    el('actionConfirmForm').addEventListener('submit',event=>{
+      event.preventDefault();
+      const expected=el('actionConfirmPhrase').dataset.expected||'';
+      if(expected && el('actionConfirmPhrase').value!==expected){
+        el('actionConfirmError').textContent='Type the exact name to continue.';
+        return;
+      }
+      finishConfirmation(true);
+    });
+    el('actionConfirmCancel').addEventListener('click',()=>finishConfirmation(false));
+    el('actionConfirmDialog').addEventListener('cancel',event=>{event.preventDefault();finishConfirmation(false);});
+    el('taskEditorDialog').addEventListener('cancel',event=>{event.preventDefault();closeTaskEditor();});
+
+    el('createProjectBtn')?.addEventListener('click', openCreateProject);
+    el('logoutButton')?.addEventListener('click', logout);
+    el('themeToggle')?.addEventListener('click', toggleTheme);
     el('publicTheme')?.addEventListener('click', toggleTheme);
     el('projectsTheme').addEventListener('click', toggleTheme);
+    el('dashboardTheme')?.addEventListener('click', toggleTheme);
+    el('accountTheme')?.addEventListener('click', toggleTheme);
+    $$('[data-logout]').forEach(button=>button.addEventListener('click',logout));
+    $$('[data-account-section]').forEach(button=>button.addEventListener('click',()=>switchAccountSection(button.dataset.accountSection)));
+    const closeUserMenus = () => {
+      $$('.user-menu').forEach(menu=>menu.hidden=true);
+      $$('[data-user-menu]').forEach(trigger=>trigger.setAttribute('aria-expanded','false'));
+    };
+    $$('[data-user-menu]').forEach(button=>button.addEventListener('click',event=>{
+      event.stopPropagation();
+      const menu=button.nextElementSibling;
+      const opening=menu.hidden;
+      closeUserMenus();
+      menu.hidden=!opening;
+      button.setAttribute('aria-expanded',String(opening));
+      if(opening) menu.querySelector('button')?.focus({preventScroll:true});
+    }));
+    $$('.user-menu').forEach(menu=>menu.addEventListener('click',event=>event.stopPropagation()));
+    document.addEventListener('click',closeUserMenus);
+    document.addEventListener('keydown',event=>{if(event.key==='Escape')closeUserMenus();});
     el('sidebarMobileButton').addEventListener('click', openSidebar);
     el('sidebarClose').addEventListener('click', closeSidebar);
     el('sidebarBackdrop').addEventListener('click', closeSidebar);
@@ -1020,6 +1151,7 @@
   async function init() {
     applyTheme(localStorage.getItem('rowatch-theme') || 'light');
     setupInteractionFeedback();
+    window.lucide?.createIcons();
     wireEvents();
     await checkAuth();
     syncUserUI();

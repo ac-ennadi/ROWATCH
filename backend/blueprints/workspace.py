@@ -12,6 +12,26 @@ workspace_bp = Blueprint("workspace", __name__, url_prefix="/workspace")
 plugin_tasks_bp = Blueprint("plugin_tasks", __name__, url_prefix="/api/tasks")
 
 
+NAME_MAX_LENGTH = 32
+FREE_DOCUMENT_WORD_LIMIT = 1028
+
+
+def _word_count(value):
+    return len(str(value or "").split())
+
+
+def _document_content_error(content):
+    words = _word_count(content)
+    if g.project.effective_plan == "free" and words > FREE_DOCUMENT_WORD_LIMIT:
+        return jsonify({
+            "error": f"Free plan documentation is limited to {FREE_DOCUMENT_WORD_LIMIT:,} words.",
+            "word_limit": FREE_DOCUMENT_WORD_LIMIT,
+            "word_count": words,
+            "upgrade_required": True,
+        }), 400
+    return None
+
+
 def _is_admin():
     return g.member.role in ("owner", "co_admin")
 
@@ -77,6 +97,7 @@ def _document_dict(document):
         "title": document.title,
         "content_md": document.content_md or "",
         "created_by": document.created_by.username,
+        "updated_by": (document.updated_by or document.created_by).username,
         "created_at": document.created_at.isoformat(),
         "updated_at": document.updated_at.isoformat(),
     }
@@ -119,6 +140,8 @@ def create_task(project_id):
     title = str(data.get("title") or "").strip()
     if not title:
         return jsonify({"error": "Task title is required"}), 400
+    if len(title) > NAME_MAX_LENGTH:
+        return jsonify({"error": f"Task title must be {NAME_MAX_LENGTH} characters or fewer"}), 400
     try:
         members = _valid_assignees(project_id, data.get("assignee_ids"))
         due_at = _parse_due(data.get("due_at"))
@@ -127,7 +150,7 @@ def create_task(project_id):
     task = Task(
         project_id=project_id,
         created_by_id=g.user.id,
-        title=title[:200],
+        title=title,
         description_md=str(data.get("description_md") or ""),
         due_at=due_at,
     )
@@ -154,7 +177,9 @@ def update_task(project_id, task_id):
         title = str(data.get("title") or "").strip()
         if not title:
             return jsonify({"error": "Task title is required"}), 400
-        task.title = title[:200]
+        if len(title) > NAME_MAX_LENGTH:
+            return jsonify({"error": f"Task title must be {NAME_MAX_LENGTH} characters or fewer"}), 400
+        task.title = title
     if "description_md" in data:
         task.description_md = str(data.get("description_md") or "")
     if "due_at" in data:
@@ -248,11 +273,18 @@ def create_document(project_id):
     title = str(data.get("title") or "").strip()
     if not title:
         return jsonify({"error": "Document title is required"}), 400
+    if len(title) > NAME_MAX_LENGTH:
+        return jsonify({"error": f"Document title must be {NAME_MAX_LENGTH} characters or fewer"}), 400
+    content = str(data.get("content_md") or "")
+    content_error = _document_content_error(content)
+    if content_error:
+        return content_error
     document = ProjectDocument(
         project_id=project_id,
         created_by_id=g.user.id,
-        title=title[:200],
-        content_md=str(data.get("content_md") or ""),
+        updated_by_id=g.user.id,
+        title=title,
+        content_md=content,
     )
     db.session.add(document)
     db.session.commit()
@@ -274,9 +306,16 @@ def update_document(project_id, document_id):
         title = str(data.get("title") or "").strip()
         if not title:
             return jsonify({"error": "Document title is required"}), 400
-        document.title = title[:200]
+        if len(title) > NAME_MAX_LENGTH:
+            return jsonify({"error": f"Document title must be {NAME_MAX_LENGTH} characters or fewer"}), 400
+        document.title = title
     if "content_md" in data:
-        document.content_md = str(data.get("content_md") or "")
+        content = str(data.get("content_md") or "")
+        content_error = _document_content_error(content)
+        if content_error:
+            return content_error
+        document.content_md = content
+    document.updated_by_id = g.user.id
     document.updated_at = datetime.utcnow()
     db.session.commit()
     publish_project_update(project_id, "document_updated", {"document_id": document.id})

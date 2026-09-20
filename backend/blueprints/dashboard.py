@@ -1,10 +1,10 @@
-from flask import Blueprint, Response, jsonify, g
+from flask import Blueprint, Response, jsonify, g, request
 import csv
 import io
-from models import Session, ScriptEvent, InstanceEvent, ProjectMember
+from models import db, Session, ScriptEvent, InstanceEvent, ProjectMember, User
 from utils import login_required, project_access
 from datetime import datetime, timedelta
-from sqlalchemy import func
+from sqlalchemy import func, literal
 from config import PLAN_LIMITS
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
@@ -138,36 +138,66 @@ def member_stats(project_id, user_id):
     })
 
 @dashboard_bp.route("/<project_id>/activity", methods=["GET"])
-@project_access(role_required="admin")
+@project_access()
 def full_activity(project_id):
-    """All script events across all members, newest first."""
-    sessions = Session.query.filter_by(project_id=project_id).all()
-    all_events = []
-    for s in sessions:
-        for e in s.script_events:
-            all_events.append({
-                "username":     s.user.username,
-                "session_id":   s.id,
-                "script":       e.script_name,
-                "event_type":   e.event_type,
-                "chars_added":  e.chars_added,
-                "chars_removed":e.chars_removed,
-                "occurred_at":  e.occurred_at.isoformat(),
-            })
-        for e in s.instance_events:
-            all_events.append({
-                "username": s.user.username,
-                "session_id": s.id,
-                "script": e.instance_name,
-                "event_type": f"{e.category}_{e.action}",
-                "chars_added": 0,
-                "chars_removed": 0,
-                "count": e.count,
-                "class_name": e.class_name,
-                "occurred_at": e.occurred_at.isoformat(),
-            })
-    all_events.sort(key=lambda x: x["occurred_at"], reverse=True)
-    return jsonify(all_events)
+    """Paginated project activity with parameterized, literal server-side search."""
+    try:
+        page = int(request.args.get("page", "1"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "page must be a positive integer"}), 400
+    if page < 1 or page > 1_000_000:
+        return jsonify({"error": "page must be a positive integer"}), 400
+    page_size = 200
+    search = (request.args.get("q") or "").strip()[:100]
+    member = (request.args.get("member") or "").strip()[:64]
+
+    script_query = db.session.query(
+        User.username.label("username"), Session.id.label("session_id"),
+        ScriptEvent.script_name.label("script"), ScriptEvent.event_type.label("event_type"),
+        ScriptEvent.chars_added.label("chars_added"), ScriptEvent.chars_removed.label("chars_removed"),
+        literal(None).label("count"), literal(None).label("class_name"),
+        ScriptEvent.occurred_at.label("occurred_at"),
+    ).join(Session, ScriptEvent.session_id == Session.id).join(User, Session.user_id == User.id).filter(Session.project_id == project_id)
+    instance_query = db.session.query(
+        User.username.label("username"), Session.id.label("session_id"),
+        InstanceEvent.instance_name.label("script"),
+        (InstanceEvent.category + literal("_") + InstanceEvent.action).label("event_type"),
+        literal(0).label("chars_added"), literal(0).label("chars_removed"),
+        InstanceEvent.count.label("count"), InstanceEvent.class_name.label("class_name"),
+        InstanceEvent.occurred_at.label("occurred_at"),
+    ).join(Session, InstanceEvent.session_id == Session.id).join(User, Session.user_id == User.id).filter(Session.project_id == project_id)
+
+    if g.member.role not in ("owner", "co_admin"):
+        script_query = script_query.filter(Session.user_id == g.user.id)
+        instance_query = instance_query.filter(Session.user_id == g.user.id)
+    elif member:
+        script_query = script_query.filter(User.username == member)
+        instance_query = instance_query.filter(User.username == member)
+
+    activity = script_query.union_all(instance_query).subquery()
+    query = db.session.query(activity)
+    if search:
+        # Escape LIKE metacharacters so input is treated literally; SQLAlchemy binds the value.
+        escaped = search.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        query = query.filter(db.or_(
+            func.lower(activity.c.username).like(pattern, escape="\\"),
+            func.lower(activity.c.script).like(pattern, escape="\\"),
+            func.lower(activity.c.event_type).like(pattern, escape="\\"),
+            func.lower(func.coalesce(activity.c.class_name, "")).like(pattern, escape="\\"),
+        ))
+
+    total = query.count()
+    rows = query.order_by(activity.c.occurred_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    items = []
+    for row in rows:
+        item = dict(row._mapping)
+        item["occurred_at"] = item["occurred_at"].isoformat()
+        items.append(item)
+    return jsonify({
+        "items": items, "page": page, "page_size": page_size, "total": total,
+        "pages": max(1, (total + page_size - 1) // page_size),
+    })
 
 # ── Charts data ──────────────────────────────────────────────
 

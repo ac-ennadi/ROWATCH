@@ -95,3 +95,16 @@ def test_registration_records_and_enforces_current_tracking_consent(app, client)
         user = User.query.filter_by(username="Consented").one()
         assert user.tracking_consent_at is not None
         assert user.tracking_consent_version == "2026-09-01"
+
+
+def test_account_and_project_names_are_limited_to_32_characters(client):
+    too_long = "x" * 33
+    registration = register(client, too_long)
+    assert registration.status_code == 400
+    assert "32 characters" in registration.get_json()["error"]
+
+    assert register(client, "NameLimitOwner").status_code == 201
+    assert client.patch("/auth/me", json={"username": too_long, "email": "namelimitowner@example.test"}).status_code == 400
+    assert client.post("/projects/", json={"name": too_long}).status_code == 400
+    project = client.post("/projects/", json={"name": "Valid Project"}).get_json()
+    assert client.patch(f"/projects/{project['id']}", json={"name": too_long}).status_code == 400

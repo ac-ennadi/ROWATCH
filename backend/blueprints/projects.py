@@ -56,8 +56,8 @@ def create_project():
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "Project name is required"}), 400
-    if len(name) > 128:
-        return jsonify({"error": "Project name is too long"}), 400
+    if len(name) > 32:
+        return jsonify({"error": "Project name must be 32 characters or fewer"}), 400
 
     project = Project(owner_id=g.user.id, name=name)
     db.session.add(project)
@@ -81,8 +81,8 @@ def update_project(project_id):
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "Project name is required"}), 400
-    if len(name) > 128:
-        return jsonify({"error": "Project name is too long"}), 400
+    if len(name) > 32:
+        return jsonify({"error": "Project name must be 32 characters or fewer"}), 400
     g.project.name = name
     db.session.commit()
     return jsonify({"ok": True, "name": name})
