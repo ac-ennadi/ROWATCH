@@ -1,4 +1,4 @@
-from conftest import register
+from conftest import issue_api_key, register
 
 
 def test_auth_cookie_survives_followup_requests(client):
@@ -62,15 +62,36 @@ def test_registration_requires_explicit_tracking_consent(client):
     assert declined.get_json()["consent_required"] is True
 
 
-def test_registration_records_versioned_tracking_consent(app, client):
+def test_registration_records_and_enforces_current_tracking_consent(app, client):
     response = register(client, "Consented")
     assert response.status_code == 201
+    project = client.post("/projects/", json={"name": "Consent Project"}).get_json()
+    api_key = issue_api_key(client)
     me = client.get("/auth/me").get_json()
     assert me["tracking_consent_at"] is not None
     assert me["tracking_consent_version"] == "2026-08-25"
+    assert me["consent_required"] is False
+
+    app.config["TRACKING_CONSENT_VERSION"] = "2026-09-01"
+    outdated = client.get("/auth/me")
+    assert outdated.status_code == 200
+    assert outdated.get_json()["consent_required"] is True
+    blocked_web = client.get("/projects/")
+    assert blocked_web.status_code == 403
+    assert blocked_web.get_json()["consent_required"] is True
+    blocked_studio = client.get("/api/plugin/projects", headers={"X-API-Key": api_key})
+    assert blocked_studio.status_code == 403
+    assert blocked_studio.get_json()["consent_required"] is True
+    assert client.post("/auth/consent", json={"accepted": False}).status_code == 400
+
+    accepted = client.post("/auth/consent", json={"accepted": True})
+    assert accepted.status_code == 200
+    assert accepted.get_json()["tracking_consent_version"] == "2026-09-01"
+    assert client.get("/projects/").status_code == 200
+    assert client.get("/api/plugin/projects", headers={"X-API-Key": api_key}).status_code == 200
 
     with app.app_context():
         from models import User
         user = User.query.filter_by(username="Consented").one()
         assert user.tracking_consent_at is not None
-        assert user.tracking_consent_version == "2026-08-25"
+        assert user.tracking_consent_version == "2026-09-01"

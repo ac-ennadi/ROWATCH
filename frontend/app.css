@@ -71,3 +71,26 @@ input[readonly]{opacity:.78;cursor:not-allowed}
 .cta-actions{display:flex;gap:8px}
 @media(max-width:760px){.hero{padding:50px 0 42px;gap:30px}.hero h1{font-size:42px}.hero-lede{font-size:16px}.product-preview{grid-template-columns:110px 1fr;min-width:690px;transform-origin:left top;transform:scale(.75);margin-bottom:-115px}.steps{grid-template-columns:1fr}.steps li{min-height:auto;border-right:0;border-bottom:1px solid var(--border)}.steps li:last-child{border-bottom:0}.steps li:not(:last-child)::after{content:"↓";right:auto;left:24px;top:auto;bottom:-12px;transform:none}.cta-actions{width:100%;flex-direction:column}.cta-actions .btn{width:100%}}
 @media(max-width:460px){.hero h1{font-size:36px}.product-preview{transform:scale(.58);margin-bottom:-200px}}
+
+
+/* Public legal documents */
+.legal-view{min-height:100vh;background:var(--bg)}
+.legal-shell{width:min(820px,calc(100% - 40px));padding:48px 0 80px}
+.legal-back{display:inline-block;margin-bottom:28px}
+.legal-document{border-top:1px solid var(--border-strong)}
+.legal-document header{padding:30px 0 24px;border-bottom:1px solid var(--border)}
+.legal-document header h1{font-size:38px;letter-spacing:-.04em;margin:0 0 7px}
+.legal-document header>p:last-child{color:var(--muted);margin:0;font-size:12px}
+.legal-document>p{color:var(--muted);font-size:14px;line-height:1.75;margin:18px 0}
+.legal-document h2{font-size:17px;letter-spacing:-.015em;margin:30px 0 8px;padding-top:4px}
+.legal-document a,.consent-option a,.tracking-details-link{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+.legal-callout{border-left:3px solid var(--accent);background:var(--accent-soft);padding:14px 16px;margin:20px 0;line-height:1.65}
+.tracking-details-link{display:inline-block;font-size:11px;margin:-5px 0 12px 27px}
+@media(max-width:600px){.legal-shell{width:min(100% - 28px,820px);padding-top:32px}.legal-document header h1{font-size:32px}.legal-document h2{font-size:16px}.consent-option{font-size:11px!important}}
+
+.consent-gate{width:min(560px,calc(100% - 28px))}
+.consent-gate form{padding:24px}
+.consent-summary{display:grid;gap:4px;border:1px solid var(--border);border-left:3px solid var(--accent);background:var(--accent-soft);padding:12px 14px;margin:0 0 14px}
+.consent-summary span{font-size:11px;color:var(--muted);line-height:1.5}
+.consent-version{font-size:10px;color:var(--muted);margin:2px 0 10px 27px}
+.consent-gate-actions{justify-content:space-between}

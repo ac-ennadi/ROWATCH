@@ -16,6 +16,22 @@ def create_token(user_id):
 def decode_token(token):
     return jwt.decode(token, current_app.config["JWT_SECRET"], algorithms=["HS256"])
 
+
+def consent_is_current(user):
+    return bool(
+        user
+        and user.tracking_consent_at
+        and user.tracking_consent_version == current_app.config["TRACKING_CONSENT_VERSION"]
+    )
+
+
+def consent_required_response():
+    return jsonify({
+        "error": "You must accept the current Terms of Service and Privacy Policy to continue",
+        "consent_required": True,
+        "consent_version": current_app.config["TRACKING_CONSENT_VERSION"],
+    }), 403
+
 def login_required(f):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
@@ -36,6 +52,9 @@ def login_required(f):
             return jsonify({"error": "Token expired"}), 401
         except Exception:
             return jsonify({"error": "Invalid token"}), 401
+        consent_endpoints = {"auth.me", "auth.accept_consent"}
+        if request.endpoint not in consent_endpoints and not consent_is_current(g.user):
+            return consent_required_response()
         return f(*args, **kwargs)
     return wrapper
 
@@ -68,6 +87,8 @@ def account_api_key_required(f):
         user = _account_from_api_key()
         if not user:
             return jsonify({"error": "Invalid or missing account API key", "api_key_required": True}), 401
+        if not consent_is_current(user):
+            return consent_required_response()
         g.user = user
         return f(*args, **kwargs)
     return wrapper
@@ -81,6 +102,8 @@ def plugin_auth(f):
         project_id = request.headers.get("X-Project-ID")
         if not user:
             return jsonify({"error": "Invalid or missing account API key", "api_key_required": True}), 401
+        if not consent_is_current(user):
+            return consent_required_response()
         if not project_id:
             return jsonify({"error": "Missing selected project ID"}), 400
         project = db.session.get(Project, project_id)

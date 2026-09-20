@@ -28,5 +28,21 @@ def test_registration_discloses_and_requires_tracking_consent(client):
     javascript = client.get("/app.js").data
     assert b'id="regTrackingConsent"' in html
     assert b'type="checkbox" required' in html
-    assert b"Tracking stops when the session ends" in html
+    assert b"I consent to RoWatch session tracking" in html
+    assert b'href="/terms"' in html
+    assert b'href="/privacy"' in html
+    assert b"What does RoWatch track?" in html
     assert b"tracking_consent: el('regTrackingConsent').checked" in javascript
+    assert b'id="legalConsentDialog"' in html
+    assert b'id="legalConsentCheckbox"' in html
+    assert b"Updated terms require your approval" in html
+    assert b"/auth/consent" in javascript
+
+    privacy = client.get("/privacy")
+    terms = client.get("/terms")
+    assert privacy.status_code == 200
+    assert terms.status_code == 200
+    html = privacy.get_data(as_text=True)
+    assert "Privacy Policy" in html and "Terms of Service" in html
+    assert "does not upload script source code, record keystrokes" in html
+    assert "not affiliated with, endorsed by, or sponsored by Roblox Corporation" in html

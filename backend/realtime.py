@@ -2,7 +2,7 @@ from flask import request
 from flask_socketio import SocketIO, emit, join_room
 
 from models import ProjectMember, User
-from utils import decode_token
+from utils import consent_is_current, decode_token
 
 
 socketio = SocketIO(cors_allowed_origins=[], async_mode="threading")
@@ -22,7 +22,7 @@ def _socket_user():
 @socketio.on("connect")
 def on_connect(auth=None):
     user = _socket_user()
-    if not user:
+    if not user or not consent_is_current(user):
         return False
     emit("ready", {"ok": True, "username": user.username})
 
@@ -31,7 +31,7 @@ def on_connect(auth=None):
 def on_join_project(data):
     user = _socket_user()
     project_id = str((data or {}).get("project_id") or "")
-    if not user or not project_id:
+    if not user or not consent_is_current(user) or not project_id:
         emit("project_joined", {"ok": False, "error": "Unauthorized"})
         return
     member = ProjectMember.query.filter_by(

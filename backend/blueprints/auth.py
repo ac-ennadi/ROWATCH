@@ -126,6 +126,25 @@ def me():
         "session_days": current_app.config["SESSION_DAYS"],
         "tracking_consent_at": g.user.tracking_consent_at.isoformat() if g.user.tracking_consent_at else None,
         "tracking_consent_version": g.user.tracking_consent_version,
+        "current_consent_version": current_app.config["TRACKING_CONSENT_VERSION"],
+        "consent_required": not (g.user.tracking_consent_at and g.user.tracking_consent_version == current_app.config["TRACKING_CONSENT_VERSION"]),
+    })
+
+
+@auth_bp.route("/consent", methods=["POST"])
+@login_required
+def accept_consent():
+    data = request.get_json(silent=True) or {}
+    if data.get("accepted") is not True:
+        return jsonify({"error": "You must check the consent box to continue", "consent_required": True}), 400
+    g.user.tracking_consent_at = datetime.utcnow()
+    g.user.tracking_consent_version = current_app.config["TRACKING_CONSENT_VERSION"]
+    db.session.commit()
+    return jsonify({
+        "ok": True,
+        "tracking_consent_at": g.user.tracking_consent_at.isoformat(),
+        "tracking_consent_version": g.user.tracking_consent_version,
+        "consent_required": False,
     })
 
 

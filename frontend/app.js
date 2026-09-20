@@ -34,6 +34,13 @@
         ...options,
       });
       const data = await response.json().catch(() => ({}));
+      if (response.status === 403 && data.consent_required && path !== '/auth/consent') {
+        if (state.user) {
+          state.user.consent_required = true;
+          state.user.current_consent_version = data.consent_version || state.user.current_consent_version;
+          queueMicrotask(showLegalConsent);
+        }
+      }
       return {ok: response.ok, status: response.status, data};
     } catch (error) {
       return {ok: false, status: 0, data: {error: 'Could not reach the RoWatch server.'}};
@@ -87,16 +94,27 @@
   function setView(name) {
     $$('.view').forEach(v => v.classList.remove('active'));
     el(`view-${name}`)?.classList.add('active');
-    el('publicNav').style.display = name === 'home' ? '' : 'none';
+    el('publicNav').style.display = ['home', 'privacy', 'terms'].includes(name) ? '' : 'none';
     window.scrollTo({top: 0, behavior: 'auto'});
   }
 
-  async function route(name) {
+  async function route(name, updateHistory = true) {
     closeSidebar();
     if (name === 'home') {
       state.project = null;
       setView('home');
-      history.replaceState(null, '', location.pathname);
+      if (updateHistory && location.pathname !== '/') history.pushState(null, '', '/');
+      return;
+    }
+    if (name === 'privacy' || name === 'terms') {
+      state.project = null;
+      setView(name);
+      const path = `/${name}`;
+      if (updateHistory && location.pathname !== path) history.pushState(null, '', path);
+      requestAnimationFrame(() => {
+        const section = location.hash && document.getElementById(location.hash.slice(1));
+        if (section) section.scrollIntoView();
+      });
       return;
     }
     if (name === 'login' || name === 'register') {
@@ -105,6 +123,11 @@
     }
     if (name === 'projects') {
       if (!state.user) return route('login');
+      if (state.user.consent_required) {
+        setView('projects');
+        showLegalConsent();
+        return;
+      }
       state.project = null;
       setView('projects');
       syncUserUI();
@@ -113,6 +136,7 @@
     }
     if (name === 'account') {
       if (!state.user) return route('login');
+      if (state.user.consent_required) { showLegalConsent(); return; }
       if (state.project) return openPanel('account');
       return openStandaloneAccount();
     }
@@ -145,6 +169,45 @@
       state.user = data;
       syncUserUI();
     }
+  }
+
+  function showLegalConsent() {
+    if (!state.user?.consent_required) return;
+    const dialog = el('legalConsentDialog');
+    el('legalConsentVersion').textContent = state.user.current_consent_version || 'Current';
+    el('legalConsentCheckbox').checked = false;
+    el('legalConsentAccept').disabled = true;
+    el('legalConsentError').textContent = '';
+    if (!dialog.open) dialog.showModal();
+  }
+
+  async function acceptCurrentConsent(event) {
+    event.preventDefault();
+    const checkbox = el('legalConsentCheckbox');
+    const error = el('legalConsentError');
+    if (!checkbox.checked) {
+      error.textContent = 'Check the consent box to continue.';
+      return;
+    }
+    const result = await api('/auth/consent', {
+      method: 'POST',
+      body: JSON.stringify({accepted: true}),
+    });
+    if (!result.ok) {
+      error.textContent = result.data.error || 'Could not save consent.';
+      return;
+    }
+    Object.assign(state.user, result.data, {
+      current_consent_version: result.data.tracking_consent_version,
+      consent_required: false,
+    });
+    el('legalConsentDialog').close();
+    if (state.socket) {
+      state.socket.disconnect();
+      state.socket = null;
+    }
+    connectLiveUpdates();
+    await route('projects');
   }
 
   function connectLiveUpdates() {
@@ -260,6 +323,7 @@
 
   async function logout() {
     await api('/auth/logout', {method: 'POST'});
+    if (el('legalConsentDialog')?.open) el('legalConsentDialog').close();
     state.user = null;
     state.project = null;
     destroyCharts();
@@ -932,6 +996,10 @@
 
     el('loginForm').addEventListener('submit', login);
     el('registerForm').addEventListener('submit', register);
+    el('legalConsentForm').addEventListener('submit', acceptCurrentConsent);
+    el('legalConsentCheckbox').addEventListener('change', event => { el('legalConsentAccept').disabled = !event.target.checked; });
+    el('legalConsentLogout').addEventListener('click', logout);
+    el('legalConsentDialog').addEventListener('cancel', event => event.preventDefault());
     el('createProjectForm').addEventListener('submit', createProject);
     el('inviteForm').addEventListener('submit', inviteMember);
     el('checkoutForm').addEventListener('submit', checkout);
@@ -943,6 +1011,10 @@
     el('sidebarMobileButton').addEventListener('click', openSidebar);
     el('sidebarClose').addEventListener('click', closeSidebar);
     el('sidebarBackdrop').addEventListener('click', closeSidebar);
+    window.addEventListener('popstate', () => {
+      const page = location.pathname === '/privacy' ? 'privacy' : location.pathname === '/terms' ? 'terms' : 'home';
+      route(page, false);
+    });
   }
 
   async function init() {
@@ -952,7 +1024,8 @@
     await checkAuth();
     syncUserUI();
     connectLiveUpdates();
-    await route(state.user ? 'projects' : 'home');
+    const publicPage = location.pathname === '/privacy' ? 'privacy' : location.pathname === '/terms' ? 'terms' : null;
+    await route(publicPage || (state.user ? 'projects' : 'home'), false);
   }
 
   init();
