@@ -15,6 +15,7 @@
     activeDocumentId: null,
     editingDocumentId: null,
     taskAssigneeFilter: 'all',
+    activityMemberFilter: 'all',
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -422,10 +423,15 @@
   async function loadActivity() {
     const content = el('panelContent');
     let events = [];
+    let members = [];
     if (isAdmin()) {
-      const result = await api(`/dashboard/${state.project.id}/activity`);
-      if (!result.ok) return renderError(content, result.data.error);
-      events = result.data;
+      const [activityResult, membersResult] = await Promise.all([
+        api(`/dashboard/${state.project.id}/activity`),
+        api(`/projects/${state.project.id}/members`),
+      ]);
+      if (!activityResult.ok) return renderError(content, activityResult.data.error);
+      events = activityResult.data;
+      members = membersResult.ok ? membersResult.data : [];
     } else {
       const result = await api(`/dashboard/${state.project.id}/me`);
       if (!result.ok) return renderError(content, result.data.error);
@@ -433,8 +439,21 @@
         ...(session.events || []).map(event => ({...event, username: state.user.username, session_id: session.id})),
         ...(session.instance_events || []).map(event => ({...event, username: state.user.username, session_id: session.id, script: event.instance_name, event_type: `${event.category}_${event.action}`})),
       ]).sort((a,b) => String(b.occurred_at).localeCompare(String(a.occurred_at)));
+      members = [{username: state.user.username}];
+      state.activityMemberFilter = 'all';
     }
-    content.innerHTML = `<div class="toolbar"><div><h2>${isAdmin() ? 'Project activity' : 'My activity'}</h2><p>Newest Studio events first. Up to 200 are shown.</p></div></div>${events.length ? activityTable(events.slice(0,200)) : emptyInline('No Studio activity', 'Connect the plugin and start a session.')}`;
+    if (state.activityMemberFilter !== 'all' && !members.some(member => member.username === state.activityMemberFilter)) {
+      state.activityMemberFilter = 'all';
+    }
+    const visibleEvents = state.activityMemberFilter === 'all'
+      ? events
+      : events.filter(event => event.username === state.activityMemberFilter);
+    const filter = isAdmin() ? `<div class="activity-filter"><label>Filter by member<select id="activityMemberFilter"><option value="all">All members</option>${members.map(member=>`<option value="${esc(member.username)}" ${state.activityMemberFilter===member.username?'selected':''}>${esc(member.username)}</option>`).join('')}</select></label><span class="role-box">${visibleEvents.length}/${events.length} shown</span></div>` : '';
+    content.innerHTML = `<div class="toolbar"><div><h2>${isAdmin() ? 'Project activity' : 'My activity'}</h2><p>Newest Studio events first. Up to 200 are shown.</p></div>${filter}</div>${visibleEvents.length ? activityTable(visibleEvents.slice(0,200)) : emptyInline('No matching activity', state.activityMemberFilter==='all'?'Connect the plugin and start a session.':'This member has no recorded activity.')}`;
+    el('activityMemberFilter')?.addEventListener('change', event => {
+      state.activityMemberFilter = event.target.value;
+      loadActivity();
+    });
   }
 
   function renderMarkdown(markdown = '') {
@@ -473,7 +492,7 @@
     ]);
     if (!tasksResult.ok) return renderError(content, tasksResult.data.error);
     const tasks = tasksResult.data.items || [];
-    const taskUsage = tasksResult.data.usage || {current:tasks.length,limit:null,plan:state.project.plan};
+    const taskUsage = tasksResult.data.usage;
     const members = membersResult.ok ? membersResult.data : [];
     if (state.taskAssigneeFilter !== 'all' && !members.some(member => member.user_id === state.taskAssigneeFilter)) {
       state.taskAssigneeFilter = 'all';
@@ -528,7 +547,7 @@
     const result=await api(`/workspace/${state.project.id}/documents`);
     if(!result.ok)return renderError(content,result.data.error);
     const documents=result.data.items || [];
-    const documentUsage=result.data.usage || {current:documents.length,limit:null,plan:state.project.plan};
+    const documentUsage=result.data.usage;
     if(!documents.some(doc=>doc.id===state.activeDocumentId))state.activeDocumentId=documents[0]?.id||null;
     const selected=documents.find(doc=>doc.id===state.activeDocumentId);
     const list=documents.map(doc=>`<button class="document-link ${doc.id===state.activeDocumentId?'active':''}" data-document-id="${esc(doc.id)}"><strong>${esc(doc.title)}</strong><small>Updated ${esc(fmtDate(doc.updated_at))}</small></button>`).join('');
@@ -819,6 +838,20 @@
   function openSidebar() { el('sidebar').classList.add('open'); el('sidebarBackdrop').classList.add('show'); }
   function closeSidebar() { el('sidebar').classList.remove('open'); el('sidebarBackdrop').classList.remove('show'); }
 
+  function setupInteractionFeedback() {
+    const selector = '.btn, .mini-btn, .icon-btn, .account-chip, .document-link, .side-nav button, .my-projects-btn';
+    document.addEventListener('pointerdown', event => {
+      const target = event.target.closest(selector);
+      if (!target || target.disabled || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      target.classList.remove('interaction-pop');
+      void target.offsetWidth;
+      target.classList.add('interaction-pop');
+    });
+    document.addEventListener('animationend', event => {
+      if (event.animationName === 'interactionPop') event.target.classList.remove('interaction-pop');
+    });
+  }
+
   function wireEvents() {
     $$('[data-route]').forEach(node => node.addEventListener('click', e => { e.preventDefault(); route(node.dataset.route); }));
     $$('[data-panel]').forEach(node => node.addEventListener('click', () => openPanel(node.dataset.panel)));
@@ -842,6 +875,7 @@
 
   async function init() {
     applyTheme(localStorage.getItem('rowatch-theme') || 'light');
+    setupInteractionFeedback();
     wireEvents();
     await checkAuth();
     syncUserUI();
